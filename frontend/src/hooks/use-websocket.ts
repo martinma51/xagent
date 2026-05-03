@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { useAuth } from "@/contexts/auth-context"
+import { apiRequest, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
+import { toast } from "sonner"
 import { getWsUrl, getApiUrl } from "@/lib/utils"
 
 // Duplicate message detection: record recently sent messages
@@ -444,24 +446,36 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             formData.append('task_id', taskIdRef.current.toString())
           }
 
-          fetch(`${getApiUrl()}/api/files/upload`, {
+          apiRequest(`${getApiUrl()}/api/files/upload`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${token || localStorage.getItem('token') || ''}`
             },
             body: formData
           })
-            .then(res => res.json())
-            .then(data => {
+            .then(async res => ({ response: res, parsed: await parseApiResponse(res) }))
+            .then(({ response, parsed }) => {
+              if (!response.ok || !isJsonRecord(parsed.data)) {
+                throw new Error(getUploadErrorMessage(response, parsed, {
+                  generic: 'Upload failed',
+                  ...UPLOAD_ERROR_MESSAGES,
+                }))
+              }
+
+              const data = parsed.data
               messageData.files = [...preUploadedFiles];
-              if (data.success && data.files) {
+              if (data.success && Array.isArray(data.files)) {
                 // Send file_ids in the websocket message
-                const newUploadedFiles = data.files.map((f: any) => ({
-                  file_id: f.file_id,
-                  name: f.filename,
-                  size: f.file_size,
-                  type: f.mime_type || ''
-                }));
+                const newUploadedFiles = data.files
+                  .filter((f): f is { file_id: string; filename?: string; file_size?: number; mime_type?: string } => (
+                    isJsonRecord(f) && typeof f.file_id === 'string'
+                  ))
+                  .map((f) => ({
+                    file_id: f.file_id,
+                    name: typeof f.filename === 'string' ? f.filename : '',
+                    size: typeof f.file_size === 'number' ? f.file_size : 0,
+                    type: typeof f.mime_type === 'string' ? f.mime_type : ''
+                  }));
                 messageData.files = messageData.files.concat(newUploadedFiles);
               }
 
@@ -482,11 +496,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             })
             .catch(err => {
               console.error('Failed to upload files:', err)
-              if (preUploadedFiles.length > 0) {
-                messageData.files = preUploadedFiles;
-              }
-              // Send without newly uploaded files if upload fails
-              socketRef.current?.send(JSON.stringify(messageData))
+              toast.error(err instanceof Error ? err.message : 'Upload failed')
             })
         } else {
           messageData.files = preUploadedFiles;

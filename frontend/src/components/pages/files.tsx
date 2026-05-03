@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { getApiUrl } from "@/lib/utils"
-import { apiRequest } from "@/lib/api-wrapper"
+import { apiRequest, getUploadErrorMessage, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
 import { useI18n } from "@/contexts/i18n-context"
 import { StandaloneFilePreviewDialog } from "@/components/file/standalone-file-preview-dialog"
 import { SearchInput } from "@/components/ui/search-input"
@@ -17,7 +16,6 @@ import {
   Image as ImageIcon,
   Video,
   Archive,
-  Search,
   Download,
   Trash2,
   FileCode,
@@ -180,14 +178,22 @@ export function FilesPage() {
         body: formData
       })
 
-      if (response.ok) {
+      const parsed = await parseApiResponse(response)
+
+      if (response.ok && parsed.data) {
         await loadFiles()
         if (fileInputRef.current) {
           fileInputRef.current.value = ''
         }
+      } else {
+        throw new Error(getUploadErrorMessage(response, parsed, {
+          generic: t('files.actions.upload') || 'Upload failed',
+          ...UPLOAD_ERROR_MESSAGES,
+        }))
       }
     } catch (error) {
       console.error('Upload failed:', error)
+      toast.error(error instanceof Error ? error.message : (t('files.actions.upload') || 'Upload failed'))
     } finally {
       setUploading(false)
     }

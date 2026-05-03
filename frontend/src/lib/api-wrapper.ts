@@ -101,7 +101,7 @@ function getCurrentTokens(): { accessToken: string | null; refreshToken: string 
 
 // Refresh token
 async function refreshToken(): Promise<string | null> {
-  const { accessToken, refreshToken: refresh } = getCurrentTokens()
+  const { refreshToken: refresh } = getCurrentTokens()
   if (!refresh) return null
 
   try {
@@ -163,7 +163,7 @@ export async function apiRequest(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const { accessToken, refreshToken: refresh } = getCurrentTokens()
+  const { accessToken } = getCurrentTokens()
 
   // If no token, request directly
   if (!accessToken) {
@@ -239,12 +239,98 @@ export async function apiRequest(
   return response
 }
 
+const MAX_RAW_UPLOAD_MESSAGE_LENGTH = 200
+
+function truncateUploadMessage(text: string): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= MAX_RAW_UPLOAD_MESSAGE_LENGTH) {
+    return trimmed
+  }
+  return `${trimmed.slice(0, MAX_RAW_UPLOAD_MESSAGE_LENGTH)}...`
+}
+
+type JsonRecord = Record<string, unknown>
+
+export interface ParsedApiResponse {
+  data: JsonRecord | JsonRecord[] | null
+  text: string | null
+  isHtml: boolean
+}
+
+export function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+export async function parseApiResponse(response: Response): Promise<ParsedApiResponse> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() || ""
+  const text = await response.text().catch(() => "")
+
+  if (!text) {
+    return {
+      data: null,
+      text: null,
+      isHtml: contentType.includes("text/html"),
+    }
+  }
+
+  try {
+    return {
+      data: JSON.parse(text),
+      text,
+      isHtml: /^\s*</.test(text),
+    }
+  } catch {
+    return {
+      data: null,
+      text,
+      isHtml: contentType.includes("text/html") || /^\s*</.test(text),
+    }
+  }
+}
+
+export const UPLOAD_ERROR_MESSAGES = {
+  tooLarge: "File is too large. Please reduce the upload size and try again.",
+  proxy: "Upload failed before reaching the application. Please check the server upload limit.",
+}
+
+export function getUploadErrorMessage(
+  response: Response,
+  parsed: ParsedApiResponse,
+  messages: {
+    generic: string
+    tooLarge: string
+    proxy: string
+  }
+): string {
+  if (isJsonRecord(parsed.data) && typeof parsed.data.detail === "string" && parsed.data.detail.trim()) {
+    return parsed.data.detail
+  }
+
+  if (isJsonRecord(parsed.data) && typeof parsed.data.message === "string" && parsed.data.message.trim()) {
+    return parsed.data.message
+  }
+
+  if (response.status === 413) {
+    return messages.tooLarge
+  }
+
+  if (parsed.isHtml) {
+    return messages.proxy
+  }
+
+  if (parsed.text?.trim()) {
+    return truncateUploadMessage(parsed.text)
+  }
+
+  return messages.generic
+}
+
 // Convenience methods
 export const api = {
   get: (url: string, options?: RequestInit) =>
     apiRequest(url, { ...options, method: "GET" }),
 
-  post: (url: string, data?: any, options?: RequestInit) =>
+  post: (url: string, data?: unknown, options?: RequestInit) =>
     apiRequest(url, {
       ...options,
       method: "POST",
@@ -255,7 +341,7 @@ export const api = {
       body: data ? JSON.stringify(data) : undefined,
     }),
 
-  put: (url: string, data?: any, options?: RequestInit) =>
+  put: (url: string, data?: unknown, options?: RequestInit) =>
     apiRequest(url, {
       ...options,
       method: "PUT",

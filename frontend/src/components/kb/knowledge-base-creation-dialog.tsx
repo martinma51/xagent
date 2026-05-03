@@ -14,7 +14,7 @@ import { getApiUrl } from "@/lib/utils"
 import { appendIngestionConfigToFormData, normalizeIngestionConfigForFilename } from "@/lib/ingestion-form"
 import { findMatchingIngestionTask, getKBTaskProgressDetail, getKBTaskProgressPercent, KBProgressTask } from "@/lib/kb-progress"
 import { useI18n } from "@/contexts/i18n-context"
-import { apiRequest } from "@/lib/api-wrapper"
+import { apiRequest, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
 import { Model } from "@/lib/models"
 import {
   Upload,
@@ -36,6 +36,7 @@ interface IngestionResult {
   chunks_count: number
   status: string
   message: string
+  failed_step?: string
 }
 
 interface WebIngestionResult {
@@ -334,16 +335,24 @@ export function KnowledgeBaseCreationDialog({ open, onOpenChange, onSuccess }: K
           body: formData
         })
 
+        const parsed = await parseApiResponse(response)
+
         if (!response.ok) {
-          const errorData = await response.json()
+          const errorData = isJsonRecord(parsed.data) ? parsed.data : {}
           if (errorData.status === 'error') {
-            setIngestionResults(prev => [...prev, errorData])
-            throw new Error(errorData.message || t("kb.errors.uploadFailedFile", { name: file.name }))
+            setIngestionResults(prev => [...prev, errorData as unknown as IngestionResult])
+            throw new Error((typeof errorData.message === 'string' && errorData.message) || t("kb.errors.uploadFailedFile", { name: file.name }))
           }
-          throw new Error(errorData.detail || t("kb.errors.uploadFailedFile", { name: file.name }))
+          throw new Error(getUploadErrorMessage(response, parsed, {
+            generic: t("kb.errors.uploadFailedFile", { name: file.name }) || `Failed to upload file: ${file.name}`,
+            ...UPLOAD_ERROR_MESSAGES,
+          }))
         }
 
-        const result = await response.json()
+        const result = isJsonRecord(parsed.data) ? parsed.data as unknown as IngestionResult : null
+        if (!result) {
+          throw new Error(t("kb.errors.uploadFailedFile", { name: file.name }))
+        }
         setIngestionResults(prev => [...prev, result])
 
         if (result.status === "partial" && result.failed_step) {
@@ -418,18 +427,28 @@ export function KnowledgeBaseCreationDialog({ open, onOpenChange, onSuccess }: K
         body: formData
       })
 
+      const parsed = await parseApiResponse(response)
+
       setWebIngestionProgress(50)
 
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = isJsonRecord(parsed.data) ? parsed.data : {}
         if (errorData.status === 'error') {
-          setWebIngestionResult(errorData)
-          throw new Error(errorData.message || t("kb.errors.webIngestFailed"))
+          setWebIngestionResult(errorData as unknown as WebIngestionResult)
+          throw new Error((typeof errorData.message === 'string' && errorData.message) || t("kb.errors.webIngestFailed"))
         }
-        throw new Error(errorData.detail || t("kb.errors.webIngestFailed"))
+        throw new Error(getUploadErrorMessage(response, parsed, {
+          generic: t("kb.errors.webIngestFailed") || "Website import failed",
+          ...UPLOAD_ERROR_MESSAGES,
+        }))
       }
 
-      const result: WebIngestionResult = await response.json()
+      const result: WebIngestionResult | null = isJsonRecord(parsed.data)
+        ? (parsed.data as unknown as WebIngestionResult)
+        : null
+      if (!result) {
+        throw new Error(t("kb.errors.webIngestFailed"))
+      }
       setWebIngestionResult(result)
       setWebIngestionProgress(100)
 
@@ -505,12 +524,18 @@ export function KnowledgeBaseCreationDialog({ open, onOpenChange, onSuccess }: K
         body: JSON.stringify(requestBody)
       })
 
+      const parsed = await parseApiResponse(response)
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.detail || t("kb.errors.cloudIngestFailed"))
+        throw new Error(getUploadErrorMessage(response, parsed, {
+          generic: t("kb.errors.cloudIngestFailed") || "Cloud ingest failed",
+          ...UPLOAD_ERROR_MESSAGES,
+        }))
       }
 
-      const results: IngestionResult[] = await response.json()
+      const results: IngestionResult[] = Array.isArray(parsed.data)
+        ? (parsed.data as unknown as IngestionResult[])
+        : []
       setIngestionResults(results)
 
       // Check for errors

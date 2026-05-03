@@ -36,7 +36,7 @@ export interface Interaction {
 import { useWebSocket } from "@/hooks/use-websocket"
 import { useAuth } from "@/contexts/auth-context"
 import { getApiUrl } from "@/lib/utils"
-import { apiRequest } from "@/lib/api-wrapper"
+import { apiRequest, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
 import { useI18n } from "@/contexts/i18n-context"
 import { normalizeTimestampMs } from "@/lib/time-utils"
 
@@ -3486,16 +3486,24 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                 body: formData
               })
 
-              if (uploadResponse.ok) {
-                const uploadData = await uploadResponse.json()
-                if (uploadData.success && uploadData.files) {
-                  uploadData.files.forEach((f: any) => uploadedFileIds.push(f.file_id))
+              const parsed = await parseApiResponse(uploadResponse)
+
+              if (uploadResponse.ok && isJsonRecord(parsed.data)) {
+                const uploadData = parsed.data
+                if (uploadData.success && Array.isArray(uploadData.files)) {
+                  uploadData.files
+                    .filter((f): f is { file_id: string } => isJsonRecord(f) && typeof f.file_id === 'string')
+                    .forEach(f => uploadedFileIds.push(f.file_id))
                 }
               } else {
-                console.error('Failed to upload files:', uploadResponse.statusText)
+                throw new Error(getUploadErrorMessage(uploadResponse, parsed, {
+                  generic: t("files.uploadFailed") || "Upload failed",
+                  ...UPLOAD_ERROR_MESSAGES,
+                }))
               }
             } catch (e) {
               console.error('Error uploading files before task creation:', e)
+              throw e
             }
           }
 

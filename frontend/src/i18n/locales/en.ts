@@ -907,7 +907,9 @@ Build when you need.`
     },
   },
   files: {
-    fileTooLarge: "File is too large (max 100MB)",
+    uploadFailed: "Upload failed",
+    fileTooLarge: "File is too large for the configured upload limit",
+    uploadProxyError: "Upload failed before reaching the application. Please check the server upload limit.",
     header: {
       title: "File Management",
       description: "Manage project files: upload, preview, download, and delete.",

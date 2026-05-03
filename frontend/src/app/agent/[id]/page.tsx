@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { apiRequest } from "@/lib/api-wrapper"
+import { apiRequest, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
 import { getApiUrl } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Bot } from "lucide-react"
@@ -100,16 +100,24 @@ export default function AgentChatPage() {
             body: formData
           })
 
-          if (uploadResponse.ok) {
-            const uploadData = await uploadResponse.json()
-            if (uploadData.success && uploadData.files) {
-              uploadedFileIds = uploadData.files.map((f: any) => f.file_id)
+          const parsed = await parseApiResponse(uploadResponse)
+
+          if (uploadResponse.ok && isJsonRecord(parsed.data)) {
+            const uploadData = parsed.data
+            if (uploadData.success && Array.isArray(uploadData.files)) {
+              uploadedFileIds = uploadData.files
+                .filter((f): f is { file_id: string } => isJsonRecord(f) && typeof f.file_id === 'string')
+                .map(f => f.file_id)
             }
           } else {
-            console.error('Failed to upload files:', uploadResponse.statusText)
+            throw new Error(getUploadErrorMessage(uploadResponse, parsed, {
+              generic: t("files.uploadFailed") || "Upload failed",
+              ...UPLOAD_ERROR_MESSAGES,
+            }))
           }
         } catch (e) {
           console.error('Error uploading files before task creation:', e)
+          throw e
         }
       }
 
@@ -156,7 +164,7 @@ export default function AgentChatPage() {
       }
     } catch (err) {
       console.error("Failed to send message:", err)
-      toast.error(t('builds.list.chat.sendFailed'))
+      toast.error(err instanceof Error ? err.message : t('builds.list.chat.sendFailed'))
     } finally {
       setIsSending(false)
     }

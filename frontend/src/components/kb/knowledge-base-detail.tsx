@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { apiRequest } from "@/lib/api-wrapper"
+import { apiRequest, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
 import { getApiUrl } from "@/lib/utils"
 import { appendIngestionConfigToFormData, normalizeIngestionConfigForFilename } from "@/lib/ingestion-form"
 import { findMatchingIngestionTask, getKBTaskProgressDetail, getKBTaskProgressPercent, KBProgressTask } from "@/lib/kb-progress"
@@ -58,6 +58,14 @@ interface SearchConfig {
   top_k: number
   embedding_model_id: string
   rerank_model_id: string
+}
+
+interface IngestionResult {
+  collection: string
+  document_count: number
+  chunks_count: number
+  status: string
+  message: string
 }
 
 interface WebIngestionResult {
@@ -345,16 +353,24 @@ export function KnowledgeBaseDetailContent({ collectionName }: { collectionName:
           body: formData
         })
 
+        const parsed = await parseApiResponse(response)
+
         if (!response.ok) {
-          const errorData = await response.json()
+          const errorData = isJsonRecord(parsed.data) ? parsed.data : {}
           if (errorData.status === 'error') {
-            setIngestionResults(prev => [...prev, errorData])
-            throw new Error(errorData.message || t("kb.errors.uploadFailedFile", { name: file.name }))
+            setIngestionResults(prev => [...prev, errorData as unknown as IngestionResult])
+            throw new Error((typeof errorData.message === 'string' && errorData.message) || t("kb.errors.uploadFailedFile", { name: file.name }))
           }
-          throw new Error(errorData.detail || t("kb.detail.errors.uploadFailedWithName", { name: file.name }))
+          throw new Error(getUploadErrorMessage(response, parsed, {
+            generic: t("kb.detail.errors.uploadFailedWithName", { name: file.name }) || `Failed to upload file: ${file.name}`,
+            ...UPLOAD_ERROR_MESSAGES,
+          }))
         }
 
-        const result = await response.json()
+        const result = isJsonRecord(parsed.data) ? parsed.data as unknown as IngestionResult : null
+        if (!result) {
+          throw new Error(t("kb.detail.errors.uploadFailedWithName", { name: file.name }))
+        }
         setIngestionResults(prev => [...prev, result])
         setCompletedUploadCount(i + 1)
         setUploadProgress(((i + 1) / selectedFiles.length) * 100)
@@ -470,18 +486,28 @@ export function KnowledgeBaseDetailContent({ collectionName }: { collectionName:
         body: formData
       })
 
+      const parsed = await parseApiResponse(response)
+
       setWebIngestionProgress(50)
 
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = isJsonRecord(parsed.data) ? parsed.data : {}
         if (errorData.status === 'error') {
-          setWebIngestionResult(errorData)
-          throw new Error(errorData.message || t("kb.errors.webIngestFailed"))
+          setWebIngestionResult(errorData as unknown as WebIngestionResult)
+          throw new Error((typeof errorData.message === 'string' && errorData.message) || t("kb.errors.webIngestFailed"))
         }
-        throw new Error(errorData.detail || t("kb.detail.errors.webImportFailed"))
+        throw new Error(getUploadErrorMessage(response, parsed, {
+          generic: t("kb.detail.errors.webImportFailed") || "Website import failed",
+          ...UPLOAD_ERROR_MESSAGES,
+        }))
       }
 
-      const result: WebIngestionResult = await response.json()
+      const result: WebIngestionResult | null = isJsonRecord(parsed.data)
+        ? (parsed.data as unknown as WebIngestionResult)
+        : null
+      if (!result) {
+        throw new Error(t("kb.detail.errors.webImportFailed"))
+      }
       setWebIngestionResult(result)
       setWebIngestionProgress(100)
 
