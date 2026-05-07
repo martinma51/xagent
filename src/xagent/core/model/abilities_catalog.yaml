@@ -177,7 +177,13 @@ rules:
   # Alibaba Bailian Coding Plan (international + China)
   # Curated models per providers.py: glm-4.7, glm-5, qwen3-coder-next/plus,
   # qwen3-max-2026-01-23, qwen3.5-plus
+  # NOTE: -vl rule must come before generic qwen3.5*/qwen3-max* etc.,
+  # otherwise vision variants get matched as text-only.
   # ============================================================
+  - pattern: "alibaba-coding-plan/qwen*-vl*"
+    abilities: [chat, vision, tool_calling]
+  - pattern: "alibaba-coding-plan/glm-4v*"
+    abilities: [chat, vision]
   - pattern: "alibaba-coding-plan/glm-5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "alibaba-coding-plan/glm-4.7*"
@@ -191,6 +197,10 @@ rules:
   - pattern: "alibaba-coding-plan/*"
     abilities: [chat, tool_calling]
 
+  - pattern: "alibaba-coding-plan-cn/qwen*-vl*"
+    abilities: [chat, vision, tool_calling]
+  - pattern: "alibaba-coding-plan-cn/glm-4v*"
+    abilities: [chat, vision]
   - pattern: "alibaba-coding-plan-cn/glm-5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "alibaba-coding-plan-cn/glm-4.7*"
@@ -206,7 +216,11 @@ rules:
 
   # ============================================================
   # Z.AI Coding Plan / Zhipu AI Coding Plan (GLM via dedicated endpoints)
+  # NOTE: glm-4v* rule must come before generic glm-4*, otherwise the
+  # vision variant gets matched as text-only.
   # ============================================================
+  - pattern: "zai-coding-plan/glm-4v*"
+    abilities: [chat, vision]
   - pattern: "zai-coding-plan/glm-4.5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "zai-coding-plan/glm-4*"
@@ -216,6 +230,8 @@ rules:
   - pattern: "zai-coding-plan/*"
     abilities: [chat, tool_calling]
 
+  - pattern: "zhipuai-coding-plan/glm-4v*"
+    abilities: [chat, vision]
   - pattern: "zhipuai-coding-plan/glm-4.5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "zhipuai-coding-plan/glm-4*"
