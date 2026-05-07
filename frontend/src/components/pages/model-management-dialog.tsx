@@ -88,8 +88,10 @@ export function ModelManagementDialog({
   // - userTouchedAbilities: once the user clicks any ability button we stop
   //   overwriting their selection. This survives switching to a different
   //   model_name within the same Add-Model session, by design.
+  //   Initialised to true when the dialog opens in edit mode so we never
+  //   silently overwrite abilities the user previously chose.
   // - abilitySuggestion: the latest catalog response, used to render a hint.
-  const [userTouchedAbilities, setUserTouchedAbilities] = useState(false)
+  const [userTouchedAbilities, setUserTouchedAbilities] = useState(!!initialEditingModel)
   const [abilitySuggestion, setAbilitySuggestion] = useState<{
     source: "exact" | "wildcard_provider" | "none"
     matched_pattern: string | null
@@ -236,6 +238,13 @@ export function ModelManagementDialog({
   const handleEdit = (model: Model) => {
     setEditingModel(model)
     const currentDefaults = getModelDefaultTypes(model.id)
+    // Editing an existing model: the user has already explicitly chosen
+    // these abilities (or accepted the catalog defaults at creation time),
+    // so we must not silently overwrite them when they tweak model_name.
+    // The hint UI still updates so they can see what the catalog would
+    // suggest for the new name.
+    setUserTouchedAbilities(true)
+    setAbilitySuggestion(null)
     setFormData({
       model_id: model.model_id,
       category: model.category,
@@ -250,6 +259,8 @@ export function ModelManagementDialog({
       share_with_users: model.is_shared
     })
     setViewMode('form')
+    // Show the hint for the model they're editing, without changing abilities.
+    void applyAbilitySuggestion(model.model_provider, model.model_name, model.category)
   }
 
   const handleAddFromList = () => {
@@ -1084,13 +1095,21 @@ export function ModelManagementDialog({
                   <Input
                     id="model_name"
                     value={formData.model_name}
-                    onChange={(e) => setFormData({ ...formData, model_name: e.target.value })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, model_name: e.target.value })
+                      // Refresh the hint; userTouchedAbilities=true keeps
+                      // the actual ability buttons intact (set in handleEdit).
+                      void applyAbilitySuggestion(formData.model_provider, e.target.value, formData.category)
+                    }}
                     placeholder={t('models.form.enterModelName')}
                   />
                 ) : (
                   <Select
                     value={formData.model_name}
-                    onValueChange={(value) => setFormData({ ...formData, model_name: value })}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, model_name: value })
+                      void applyAbilitySuggestion(formData.model_provider, value, formData.category)
+                    }}
                     options={fetchedModels.map(m => ({ value: m.id, label: m.id }))}
                     placeholder={t('models.form.selectModel')}
                     allowCustom={true}
@@ -1101,6 +1120,7 @@ export function ModelManagementDialog({
                         setFetchedModels([...fetchedModels, { id: value, object: "model", created: Date.now(), owned_by: formData.model_provider }])
                       }
                       setFormData({ ...formData, model_name: value })
+                      void applyAbilitySuggestion(formData.model_provider, value, formData.category)
                     }}
                   />
                 )}
