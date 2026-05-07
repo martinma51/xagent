@@ -26,12 +26,21 @@
 # version comment below. The backend reloads on process restart; tests use
 # `model_catalog.reload_catalog()` to pick up edits.
 
-# Catalog version: 2026-05-07
+# Catalog version: 2026-05-07 (rev2 — added GPT-5 / Claude 4.5 / Gemini 3 / DeepSeek V4 series)
 
 rules:
   # ============================================================
   # OpenAI
   # ============================================================
+  # GPT-5 family (2025 H2 / 2026)
+  - pattern: "openai/gpt-5.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "openai/gpt-5-nano*"
+    abilities: [chat, vision, tool_calling]
+  - pattern: "openai/gpt-5-mini*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "openai/gpt-5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   # Reasoning / "o" series
   - pattern: "openai/o3-mini*"
     abilities: [chat, tool_calling, thinking_mode]
@@ -63,6 +72,22 @@ rules:
   # ============================================================
   # Anthropic Claude
   # ============================================================
+  # Claude 5 (next-gen, extended thinking)
+  - pattern: "claude/claude-opus-5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "claude/claude-sonnet-5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "claude/claude-haiku-5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "claude/claude-5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  # Claude 4.5 (refresh, all support thinking)
+  - pattern: "claude/claude-opus-4.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "claude/claude-sonnet-4.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "claude/claude-haiku-4.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   # Claude 4 (extended thinking on Opus / Sonnet)
   - pattern: "claude/claude-opus-4*"
     abilities: [chat, vision, tool_calling, thinking_mode]
@@ -92,6 +117,13 @@ rules:
   # ============================================================
   # Google Gemini
   # ============================================================
+  # Gemini 3 (2026)
+  - pattern: "gemini/gemini-3-pro*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "gemini/gemini-3-flash*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "gemini/gemini-3*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "gemini/gemini-2.5-pro*"
     abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "gemini/gemini-2.5-flash*"
@@ -242,10 +274,16 @@ rules:
   # provider id (DeepSeek via openai, Qwen via xinference, etc.)
   # ============================================================
   # DeepSeek
+  - pattern: "*/deepseek-r2*"
+    abilities: [chat, thinking_mode]
   - pattern: "*/deepseek-reasoner*"
     abilities: [chat, thinking_mode]
   - pattern: "*/deepseek-r1*"
     abilities: [chat, thinking_mode]
+  - pattern: "*/deepseek-v4*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "*/deepseek-v3.5*"
+    abilities: [chat, tool_calling, thinking_mode]
   - pattern: "*/deepseek-chat*"
     abilities: [chat, tool_calling]
   - pattern: "*/deepseek-coder*"
@@ -285,9 +323,15 @@ rules:
   - pattern: "*/moonshot-v1*"
     abilities: [chat, tool_calling]
   # Llama / open-source common families on Xinference
+  - pattern: "*/llama-4*-vision*"
+    abilities: [chat, vision, tool_calling]
+  - pattern: "*/llama-4*"
+    abilities: [chat, vision, tool_calling]
   - pattern: "*/llama-3*-vision*"
     abilities: [chat, vision]
   - pattern: "*/llama-3*"
+    abilities: [chat, tool_calling]
+  - pattern: "*/mistral-large*"
     abilities: [chat, tool_calling]
   - pattern: "*/mistral*"
     abilities: [chat, tool_calling]
