@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { getApiUrl } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { apiRequest } from "@/lib/api-wrapper"
-import { getProviderModels, ProviderModel } from "@/lib/models"
+import { getAbilitySuggestion, getProviderModels, ProviderModel } from "@/lib/models"
 import {
   ArrowLeft,
   Plus,
@@ -84,12 +84,44 @@ export function ModelManagementDialog({
   const [isDeletingModel, setIsDeletingModel] = useState(false)
   const [hasInitializedDefaults, setHasInitializedDefaults] = useState(false)
 
+  // Ability auto-fill from curated catalog.
+  // - userTouchedAbilities: once the user clicks any ability button we stop
+  //   overwriting their selection. This survives switching to a different
+  //   model_name within the same Add-Model session, by design.
+  // - abilitySuggestion: the latest catalog response, used to render a hint.
+  const [userTouchedAbilities, setUserTouchedAbilities] = useState(false)
+  const [abilitySuggestion, setAbilitySuggestion] = useState<{
+    source: "exact" | "wildcard_provider" | "none"
+    matched_pattern: string | null
+  } | null>(null)
+
   const getDefaultAbilitiesForCategory = (category: string): string[] => {
     if (category === 'llm') return ['chat']
     if (category === 'embedding') return ['embedding']
     if (category === 'image') return ['generate']
     if (category === 'speech') return ['asr']
     return []
+  }
+
+  /**
+   * Look up abilities for the chosen (provider, model_name) against the
+   * backend catalog and, if the user hasn't manually touched the ability
+   * buttons yet, apply the suggestion. Always updates `abilitySuggestion`
+   * so the hint stays in sync, even when we don't auto-fill.
+   *
+   * Only applies for category='llm' — other categories have a fixed,
+   * single-ability shape that doesn't benefit from a catalog lookup.
+   */
+  const applyAbilitySuggestion = async (provider: string, modelName: string, category: string) => {
+    if (category !== 'llm' || !provider || !modelName) {
+      setAbilitySuggestion(null)
+      return
+    }
+    const result = await getAbilitySuggestion(provider, modelName)
+    setAbilitySuggestion({ source: result.source, matched_pattern: result.matched_pattern })
+    if (result.source !== 'none' && !userTouchedAbilities) {
+      setFormData(prev => ({ ...prev, abilities: result.abilities }))
+    }
   }
 
   const resetConnectionState = () => {
@@ -224,6 +256,9 @@ export function ModelManagementDialog({
     if (!managingProviderId) return
     const providerConfig = providers.find(p => p.id === managingProviderId)
     resetConnectionState()
+    // Fresh wizard run -> drop any prior auto-fill state.
+    setUserTouchedAbilities(false)
+    setAbilitySuggestion(null)
     setFormData({
       model_id: "",
       category: activeTab,
@@ -507,6 +542,8 @@ export function ModelManagementDialog({
                           value={formData.category}
                           onValueChange={(value) => {
                             resetConnectionState()
+                            setUserTouchedAbilities(false)
+                            setAbilitySuggestion(null)
                             setFormData(prev => ({
                               ...prev,
                               category: value,
@@ -549,6 +586,10 @@ export function ModelManagementDialog({
                                 className={`flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 ${formData.model_provider === provider.id ? 'bg-muted' : ''}`}
                                 onClick={() => {
                                   resetConnectionState()
+                                  // Provider change implies the prior model_name is gone, so any
+                                  // earlier suggestion no longer applies. Allow auto-fill again.
+                                  setUserTouchedAbilities(false)
+                                  setAbilitySuggestion(null)
                                   setFormData(prev => ({
                                     ...prev,
                                     model_provider: provider.id,
@@ -674,6 +715,7 @@ export function ModelManagementDialog({
                             setFormData({ ...formData, model_name: val })
                             setTestConnectionStatus('idle')
                             setTestConnectionError(null)
+                            void applyAbilitySuggestion(formData.model_provider, val, formData.category)
                           }}
                           options={fetchedModels.map(m => ({ value: m.id, label: m.id }))}
                           placeholder={fetchedModels.length > 0 ? t('models.form.selectModel') : t('models.form.enterModelName')}
@@ -688,6 +730,7 @@ export function ModelManagementDialog({
                             setFormData({ ...formData, model_name: val })
                             setTestConnectionStatus('idle')
                             setTestConnectionError(null)
+                            void applyAbilitySuggestion(formData.model_provider, val, formData.category)
                           }}
                         />
                       </div>
@@ -722,6 +765,22 @@ export function ModelManagementDialog({
 
                       <div className="space-y-2">
                         <Label className="text-base font-medium">{t('models.form.abilities')}</Label>
+                        {formData.category === 'llm' && formData.model_name && abilitySuggestion && (
+                          abilitySuggestion.source !== 'none' ? (
+                            <p className="text-xs text-muted-foreground">
+                              {t('models.form.abilitiesAutoFilled', {
+                                pattern: abilitySuggestion.matched_pattern || '',
+                                defaultValue: 'Pre-selected based on a known model ({{pattern}}). Adjust if needed.'
+                              })}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              {t('models.form.abilitiesUnknownModel', {
+                                defaultValue: "We don't have ability info for this model — please pick what it supports."
+                              })}
+                            </p>
+                          )
+                        )}
                         <div className="flex gap-2 flex-wrap">
                           {getAbilityOptionsForCategory(formData.category).map(({ value, label }) => {
                             const cap = value
@@ -745,6 +804,8 @@ export function ModelManagementDialog({
                                 onClick={() => {
                                   const abilities = formData.abilities || []
                                   resetConnectionState()
+                                  // From this point on, never overwrite user choices from the catalog.
+                                  setUserTouchedAbilities(true)
                                   if (isSelected) setFormData({ ...formData, abilities: abilities.filter(a => a !== cap) })
                                   else setFormData({ ...formData, abilities: [...abilities, cap] })
                                 }}
