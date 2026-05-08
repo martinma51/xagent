@@ -91,6 +91,7 @@ class PlanExecutor:
         plan: ExecutionPlan,
         tool_map: Dict[str, Tool],
         skill_context: Optional[str] = None,
+        is_builder_context: bool = False,
     ) -> List[Dict[str, Any]]:
         """Execute the plan using queue-driven concurrent execution
 
@@ -98,6 +99,7 @@ class PlanExecutor:
             plan: Execution plan with steps
             tool_map: Tool name to tool mapping
             skill_context: Optional skill context to pass to step execution
+            is_builder_context: Whether execution runs inside an agent-builder skill
         """
         logger.info(
             f"Executing plan {plan.id} with {len(plan.steps)} steps (max concurrency: {self.max_concurrency})"
@@ -175,7 +177,11 @@ class PlanExecutor:
 
                 async with self._semaphore:
                     result = await self._execute_step_with_react_agent(
-                        step, tool_map, execution_results, skill_context
+                        step,
+                        tool_map,
+                        execution_results,
+                        skill_context,
+                        is_builder_context,
                     )
 
                 # Handle successful completion
@@ -546,6 +552,7 @@ class PlanExecutor:
         tool_map: Dict[str, Tool],
         execution_results: Optional[List[Dict[str, Any]]] = None,
         skill_context: Optional[str] = None,
+        is_builder_context: bool = False,
     ) -> Dict[str, Any]:
         """Execute a single step using ReAct agent
 
@@ -554,6 +561,7 @@ class PlanExecutor:
             tool_map: Tool name to tool mapping
             execution_results: Optional list of execution results
             skill_context: Optional skill context to pass to context builder
+            is_builder_context: Whether this step runs inside an agent-builder skill
         """
         logger.info(f"Executing step {step.id}: {step.name}")
 
@@ -685,6 +693,7 @@ class PlanExecutor:
                 conversation_history=conversation_history,
                 file_info=file_info,
                 uploaded_files=uploaded_files,
+                is_builder_context=is_builder_context,
             )
 
             # Add the current step task, with tool info and original goal context
@@ -703,6 +712,14 @@ class PlanExecutor:
             # Special handling for conditional nodes
             if step.is_conditional:
                 valid_branches = list(step.conditional_branches.keys())
+                branches_example = (
+                    valid_branches[0] if valid_branches else "branch_name"
+                )
+                branches_hint = (
+                    f"(e.g., '{valid_branches[0]}' or '{valid_branches[1]}')"
+                    if len(valid_branches) >= 2
+                    else f"(e.g., '{branches_example}')"
+                )
                 task_message = (
                     f"{goal_reminder}"
                     f"Execute: {step.name} (Conditional Node)\n"
@@ -710,9 +727,9 @@ class PlanExecutor:
                     f"IMPORTANT: You must choose ONE of the following branches:\n"
                     f"{', '.join(valid_branches)}\n\n"
                     f"In your final JSON response, set the 'answer' field to ONLY contain the branch name "
-                    f"(e.g., '{valid_branches[0]}' or '{valid_branches[1]}').\n\n"
+                    f"{branches_hint}.\n\n"
                     f"Example:\n"
-                    f'{{\n  "type": "final_answer",\n  "reasoning": "Based on the analysis, the answer was found",\n  "answer": "{valid_branches[0]}",\n  "success": true,\n  "error": null\n}}\n'
+                    f'{{\n  "type": "final_answer",\n  "reasoning": "Based on the analysis, the answer was found",\n  "answer": "{branches_example}",\n  "success": true,\n  "error": null\n}}\n'
                 )
             elif tool_names:
                 task_message_parts = [
