@@ -279,10 +279,12 @@ class TestRealCatalogRegression:
         # Zhipu
         ("zhipu", "glm-4.5-air",
             ["chat", "tool_calling", "thinking_mode"]),
+        ("zhipu", "glm-4.5v", ["chat", "vision", "tool_calling", "thinking_mode"]),
         ("zhipu", "glm-4v-plus", ["chat", "vision"]),
         # Cross-provider via OpenAI-compatible endpoints
         ("openai", "deepseek-chat", ["chat", "tool_calling"]),
         ("openai", "deepseek-reasoner", ["chat", "thinking_mode"]),
+        ("openai", "kimi-k2.5", ["chat", "vision", "tool_calling", "thinking_mode"]),
     ])
     def test_known_model(
         self,
@@ -330,7 +332,10 @@ class TestBugRegressions:
     @pytest.mark.parametrize("provider,model_name", [
         ("zai-coding-plan",     "glm-4v-plus"),
         ("zai-coding-plan",     "glm-4v-flash"),
+        ("zai-coding-plan",     "glm-4.5v"),
         ("zhipuai-coding-plan", "glm-4v"),
+        ("zhipuai-coding-plan", "glm-4.5v"),
+        ("zhipu",               "glm-4.5v"),
     ])
     def test_glm_coding_plan_4v_variants_have_vision(
         self, provider: str, model_name: str
@@ -343,6 +348,25 @@ class TestBugRegressions:
             f"{provider}/{model_name} must include 'vision'; "
             f"matched={r.matched_pattern}"
         )
+        assert "thinking_mode" in r.abilities or "glm-4v" in model_name
+
+    @pytest.mark.parametrize("provider,model_name", [
+        ("kimi-for-coding", "kimi-k2.5"),
+        ("kimi-for-coding", "kimi-k2.6"),
+        ("openai", "kimi-k2.5"),
+        ("openai", "kimi-k2.6"),
+    ])
+    def test_kimi_k2_5_and_2_6_variants_keep_vision_and_thinking(
+        self, provider: str, model_name: str
+    ):
+        """Bug: generic ``kimi-k2*`` was catching newer multimodal K2.5/K2.6
+        models before more specific rules could add vision + thinking."""
+        r = lookup(provider, model_name)
+        assert "vision" in r.abilities, (
+            f"{provider}/{model_name} must include 'vision'; "
+            f"matched={r.matched_pattern}, abilities={r.abilities}"
+        )
+        assert "thinking_mode" in r.abilities
 
     @pytest.mark.parametrize("provider,model_name", [
         # Pure text models that were regression-checked after adding the
@@ -373,15 +397,22 @@ class TestBugRegressions:
         assert r.source == "wildcard_provider"
         assert r.matched_pattern == "*/deepseek-chat*"
 
+    def test_deepseek_v4_remains_text_only(self):
+        """Regression: DeepSeek V4 Preview is text-only and must not gain
+        false-positive multimodal support from the catalog."""
+        r = lookup("openai", "deepseek-v4")
+        assert "vision" not in r.abilities
+        assert "tool_calling" in r.abilities
+        assert "thinking_mode" in r.abilities
+
     @pytest.mark.parametrize("provider,model_name,must_include", [
-        # Catalog rev2: GPT-5/5.5, Claude 4.5/5, Gemini 3, DeepSeek V4 etc.
+        # Catalog rev2: GPT-5/5.5, Claude 4.5, Gemini 3, DeepSeek V4 etc.
         ("openai", "gpt-5.5", "thinking_mode"),
         ("openai", "gpt-5",   "thinking_mode"),
         ("openai", "gpt-5-mini", "thinking_mode"),
         ("claude", "claude-opus-4.5", "thinking_mode"),
-        ("claude", "claude-sonnet-5", "thinking_mode"),
         ("gemini", "gemini-3-pro", "thinking_mode"),
-        ("openai", "deepseek-v4", "vision"),
+        ("openai", "deepseek-v4", "thinking_mode"),
         ("openai", "deepseek-r2", "thinking_mode"),
     ])
     def test_recent_models_picked_up(

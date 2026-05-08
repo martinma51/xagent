@@ -72,15 +72,6 @@ rules:
   # ============================================================
   # Anthropic Claude
   # ============================================================
-  # Claude 5 (next-gen, extended thinking)
-  - pattern: "claude/claude-opus-5*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
-  - pattern: "claude/claude-sonnet-5*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
-  - pattern: "claude/claude-haiku-5*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
-  - pattern: "claude/claude-5*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
   # Claude 4.5 (refresh, all support thinking)
   - pattern: "claude/claude-opus-4.5*"
     abilities: [chat, vision, tool_calling, thinking_mode]
@@ -144,6 +135,8 @@ rules:
   # ============================================================
   # Zhipu AI (GLM, direct API)
   # ============================================================
+  - pattern: "zhipu/glm-4.5v*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "zhipu/glm-4.5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "zhipu/glm-4v*"
@@ -219,6 +212,8 @@ rules:
   # NOTE: glm-4v* rule must come before generic glm-4*, otherwise the
   # vision variant gets matched as text-only.
   # ============================================================
+  - pattern: "zai-coding-plan/glm-4.5v*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "zai-coding-plan/glm-4v*"
     abilities: [chat, vision]
   - pattern: "zai-coding-plan/glm-4.5*"
@@ -230,6 +225,8 @@ rules:
   - pattern: "zai-coding-plan/*"
     abilities: [chat, tool_calling]
 
+  - pattern: "zhipuai-coding-plan/glm-4.5v*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "zhipuai-coding-plan/glm-4v*"
     abilities: [chat, vision]
   - pattern: "zhipuai-coding-plan/glm-4.5*"
@@ -266,6 +263,10 @@ rules:
   # ============================================================
   # Kimi for Coding (Moonshot)
   # ============================================================
+  - pattern: "kimi-for-coding/kimi-k2.6*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "kimi-for-coding/kimi-k2.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "kimi-for-coding/kimi-k2*"
     abilities: [chat, tool_calling]
   - pattern: "kimi-for-coding/kimi-latest*"
@@ -297,7 +298,7 @@ rules:
   - pattern: "*/deepseek-r1*"
     abilities: [chat, thinking_mode]
   - pattern: "*/deepseek-v4*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
+    abilities: [chat, tool_calling, thinking_mode]
   - pattern: "*/deepseek-v3.5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "*/deepseek-chat*"
@@ -320,6 +321,8 @@ rules:
   - pattern: "*/qwen*"
     abilities: [chat, tool_calling]
   # GLM via openai-compat
+  - pattern: "*/glm-4.5v*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "*/glm-4.5*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "*/glm-4v*"
@@ -332,6 +335,10 @@ rules:
   - pattern: "*/minimax-m2*"
     abilities: [chat, tool_calling]
   # Kimi / Moonshot via openai-compat
+  - pattern: "*/kimi-k2.6*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "*/kimi-k2.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "*/kimi-k2*"
     abilities: [chat, tool_calling]
   - pattern: "*/moonshot-v1*-vision*"

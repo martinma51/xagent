@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Optional, Set
+from typing import Any, List, Literal, Optional, Set
 
 from pydantic import BaseModel, field_validator
 
@@ -389,4 +389,4 @@ class AbilitySuggestionResponse(BaseModel):
 
     abilities: List[str]
     matched_pattern: Optional[str] = None
-    source: str
+    source: Literal["exact", "wildcard_provider", "none"]
