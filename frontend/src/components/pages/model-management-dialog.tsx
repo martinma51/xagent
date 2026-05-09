@@ -1025,7 +1025,10 @@ export function ModelManagementDialog({
                   <Label htmlFor="model_provider">{t('models.form.provider')}</Label>
                   <Select
                     value={formData.model_provider}
-                    onValueChange={(value) => setFormData({ ...formData, model_provider: value })}
+                    onValueChange={(value) => {
+                      setAbilitySuggestion(null)
+                      setFormData({ ...formData, model_provider: value })
+                    }}
                     disabled={!!editingModel}
                     options={providers
                       .filter(p => p.category.includes(formData.category as any))
