@@ -25,10 +25,10 @@ from xagent.web.services.model_catalog import (
     reload_catalog,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _reset_real_catalog():
@@ -57,6 +57,7 @@ def temp_catalog(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 # Loading
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogLoading:
     """Verify the bundled catalog file loads and basic shape is sane."""
 
@@ -74,6 +75,7 @@ class TestCatalogLoading:
 # ---------------------------------------------------------------------------
 # Three-tier resolution
 # ---------------------------------------------------------------------------
+
 
 class TestResolutionTiers:
     """The three-tier fallback is the heart of the lookup logic — exercise
@@ -126,6 +128,7 @@ class TestResolutionTiers:
 # Robustness
 # ---------------------------------------------------------------------------
 
+
 class TestRobustness:
     """Inputs from the wild: weird casing, whitespace, empty strings, etc."""
 
@@ -160,19 +163,20 @@ class TestRobustness:
         # Catalog should be defensive about garbage inputs. None of these
         # should raise.
         for provider, model in [
-            (None, None),                  # type: ignore[arg-type]
-            (None, "gpt-4o"),              # type: ignore[arg-type]
-            ("openai", None),              # type: ignore[arg-type]
+            (None, None),  # type: ignore[arg-type]
+            (None, "gpt-4o"),  # type: ignore[arg-type]
+            ("openai", None),  # type: ignore[arg-type]
             ("", ""),
-            ("openai", "a" * 10_000),      # extremely long model name
+            ("openai", "a" * 10_000),  # extremely long model name
         ]:
-            r = lookup(provider, model)    # type: ignore[arg-type]
+            r = lookup(provider, model)  # type: ignore[arg-type]
             assert isinstance(r, AbilitySuggestion)
 
 
 # ---------------------------------------------------------------------------
 # Catalog file degradation paths
 # ---------------------------------------------------------------------------
+
 
 class TestCatalogDegradation:
     """If the YAML is missing or malformed the API stays online — lookups
@@ -223,6 +227,7 @@ class TestCatalogDegradation:
 # Reload semantics
 # ---------------------------------------------------------------------------
 
+
 class TestReload:
     def test_reload_picks_up_edits(self, temp_catalog):
         n1 = temp_catalog(
@@ -255,37 +260,52 @@ class TestReload:
 # Real-catalog regression checks
 # ---------------------------------------------------------------------------
 
+
 class TestRealCatalogRegression:
     """Concrete model -> abilities expectations the team has agreed on.
     Update these when the catalog rules change intentionally."""
 
-    @pytest.mark.parametrize("provider,model_name,expected_abilities", [
-        # OpenAI core
-        ("openai", "gpt-4o-2024-08-06", ["chat", "vision", "tool_calling"]),
-        ("openai", "gpt-3.5-turbo", ["chat", "tool_calling"]),
-        ("openai", "o1-preview", ["chat", "vision", "thinking_mode"]),
-        ("openai", "o3-mini", ["chat", "tool_calling", "thinking_mode"]),
-        # Anthropic
-        ("claude", "claude-3-5-sonnet-20241022",
-            ["chat", "vision", "tool_calling"]),
-        ("claude", "claude-sonnet-4-5",
-            ["chat", "vision", "tool_calling", "thinking_mode"]),
-        ("claude", "claude-3-5-haiku", ["chat", "tool_calling"]),
-        # Gemini
-        ("gemini", "gemini-2.5-pro",
-            ["chat", "vision", "tool_calling", "thinking_mode"]),
-        ("gemini", "gemini-1.5-flash-002",
-            ["chat", "vision", "tool_calling"]),
-        # Zhipu
-        ("zhipu", "glm-4.5-air",
-            ["chat", "tool_calling", "thinking_mode"]),
-        ("zhipu", "glm-4.5v", ["chat", "vision", "tool_calling", "thinking_mode"]),
-        ("zhipu", "glm-4v-plus", ["chat", "vision"]),
-        # Cross-provider via OpenAI-compatible endpoints
-        ("openai", "deepseek-chat", ["chat", "tool_calling"]),
-        ("openai", "deepseek-reasoner", ["chat", "thinking_mode"]),
-        ("openai", "kimi-k2.5", ["chat", "vision", "tool_calling", "thinking_mode"]),
-    ])
+    @pytest.mark.parametrize(
+        "provider,model_name,expected_abilities",
+        [
+            # OpenAI core
+            ("openai", "gpt-4o-2024-08-06", ["chat", "vision", "tool_calling"]),
+            ("openai", "gpt-3.5-turbo", ["chat", "tool_calling"]),
+            ("openai", "o1-preview", ["chat", "vision", "thinking_mode"]),
+            ("openai", "o3-mini", ["chat", "tool_calling", "thinking_mode"]),
+            # Anthropic
+            (
+                "claude",
+                "claude-3-5-sonnet-20241022",
+                ["chat", "vision", "tool_calling"],
+            ),
+            (
+                "claude",
+                "claude-sonnet-4-5",
+                ["chat", "vision", "tool_calling", "thinking_mode"],
+            ),
+            ("claude", "claude-3-5-haiku", ["chat", "tool_calling"]),
+            # Gemini
+            (
+                "gemini",
+                "gemini-2.5-pro",
+                ["chat", "vision", "tool_calling", "thinking_mode"],
+            ),
+            ("gemini", "gemini-1.5-flash-002", ["chat", "vision", "tool_calling"]),
+            # Zhipu
+            ("zhipu", "glm-4.5-air", ["chat", "tool_calling", "thinking_mode"]),
+            ("zhipu", "glm-4.5v", ["chat", "vision", "tool_calling", "thinking_mode"]),
+            ("zhipu", "glm-4v-plus", ["chat", "vision"]),
+            # Cross-provider via OpenAI-compatible endpoints
+            ("openai", "deepseek-chat", ["chat", "tool_calling"]),
+            ("openai", "deepseek-reasoner", ["chat", "thinking_mode"]),
+            (
+                "openai",
+                "kimi-k2.5",
+                ["chat", "vision", "tool_calling", "thinking_mode"],
+            ),
+        ],
+    )
     def test_known_model(
         self,
         provider: str,
@@ -293,8 +313,7 @@ class TestRealCatalogRegression:
         expected_abilities: List[str],
     ):
         r = lookup(provider, model_name)
-        assert r.source != "none", \
-            f"{provider}/{model_name} expected to be in catalog"
+        assert r.source != "none", f"{provider}/{model_name} expected to be in catalog"
         assert r.abilities == expected_abilities, (
             f"{provider}/{model_name} matched {r.matched_pattern}: "
             f"expected {expected_abilities}, got {r.abilities}"
@@ -305,17 +324,21 @@ class TestRealCatalogRegression:
 # Bug regressions
 # ---------------------------------------------------------------------------
 
+
 class TestBugRegressions:
     """Each test here corresponds to a bug we fixed. Don't delete them
     when refactoring — they pin specific catalog behavior."""
 
-    @pytest.mark.parametrize("provider,model_name", [
-        ("alibaba-coding-plan",     "qwen3.5-vl-plus"),
-        ("alibaba-coding-plan",     "qwen3-vl-max"),
-        ("alibaba-coding-plan",     "qwen2.5-vl-72b"),
-        ("alibaba-coding-plan-cn",  "qwen3.5-vl-plus"),
-        ("alibaba-coding-plan-cn",  "qwen-vl-max"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,model_name",
+        [
+            ("alibaba-coding-plan", "qwen3.5-vl-plus"),
+            ("alibaba-coding-plan", "qwen3-vl-max"),
+            ("alibaba-coding-plan", "qwen2.5-vl-72b"),
+            ("alibaba-coding-plan-cn", "qwen3.5-vl-plus"),
+            ("alibaba-coding-plan-cn", "qwen-vl-max"),
+        ],
+    )
     def test_alibaba_coding_plan_vl_variants_have_vision(
         self, provider: str, model_name: str
     ):
@@ -329,14 +352,17 @@ class TestBugRegressions:
         )
         assert "tool_calling" in r.abilities
 
-    @pytest.mark.parametrize("provider,model_name", [
-        ("zai-coding-plan",     "glm-4v-plus"),
-        ("zai-coding-plan",     "glm-4v-flash"),
-        ("zai-coding-plan",     "glm-4.5v"),
-        ("zhipuai-coding-plan", "glm-4v"),
-        ("zhipuai-coding-plan", "glm-4.5v"),
-        ("zhipu",               "glm-4.5v"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,model_name",
+        [
+            ("zai-coding-plan", "glm-4v-plus"),
+            ("zai-coding-plan", "glm-4v-flash"),
+            ("zai-coding-plan", "glm-4.5v"),
+            ("zhipuai-coding-plan", "glm-4v"),
+            ("zhipuai-coding-plan", "glm-4.5v"),
+            ("zhipu", "glm-4.5v"),
+        ],
+    )
     def test_glm_coding_plan_4v_variants_have_vision(
         self, provider: str, model_name: str
     ):
@@ -350,12 +376,15 @@ class TestBugRegressions:
         )
         assert "thinking_mode" in r.abilities or "glm-4v" in model_name
 
-    @pytest.mark.parametrize("provider,model_name", [
-        ("kimi-for-coding", "kimi-k2.5"),
-        ("kimi-for-coding", "kimi-k2.6"),
-        ("openai", "kimi-k2.5"),
-        ("openai", "kimi-k2.6"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,model_name",
+        [
+            ("kimi-for-coding", "kimi-k2.5"),
+            ("kimi-for-coding", "kimi-k2.6"),
+            ("openai", "kimi-k2.5"),
+            ("openai", "kimi-k2.6"),
+        ],
+    )
     def test_kimi_k2_5_and_2_6_variants_keep_vision_and_thinking(
         self, provider: str, model_name: str
     ):
@@ -368,18 +397,21 @@ class TestBugRegressions:
         )
         assert "thinking_mode" in r.abilities
 
-    @pytest.mark.parametrize("provider,model_name", [
-        # Pure text models that were regression-checked after adding the
-        # -vl rules — these must NOT pick up vision.
-        ("alibaba-coding-plan",   "qwen3.5-plus"),
-        ("alibaba-coding-plan",   "qwen3-coder-plus"),
-        ("alibaba-coding-plan",   "qwen3-max-2026-01-23"),
-        ("alibaba-coding-plan",   "glm-5"),
-        ("alibaba-coding-plan",   "glm-4.7"),
-        ("zai-coding-plan",       "glm-4.5-air"),
-        ("zai-coding-plan",       "glm-4-plus"),
-        ("zhipuai-coding-plan",   "glm-4.5-flash"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,model_name",
+        [
+            # Pure text models that were regression-checked after adding the
+            # -vl rules — these must NOT pick up vision.
+            ("alibaba-coding-plan", "qwen3.5-plus"),
+            ("alibaba-coding-plan", "qwen3-coder-plus"),
+            ("alibaba-coding-plan", "qwen3-max-2026-01-23"),
+            ("alibaba-coding-plan", "glm-5"),
+            ("alibaba-coding-plan", "glm-4.7"),
+            ("zai-coding-plan", "glm-4.5-air"),
+            ("zai-coding-plan", "glm-4-plus"),
+            ("zhipuai-coding-plan", "glm-4.5-flash"),
+        ],
+    )
     def test_text_only_variants_do_not_have_vision(
         self, provider: str, model_name: str
     ):
@@ -405,16 +437,19 @@ class TestBugRegressions:
         assert "tool_calling" in r.abilities
         assert "thinking_mode" in r.abilities
 
-    @pytest.mark.parametrize("provider,model_name,must_include", [
-        # Catalog rev2: GPT-5/5.5, Claude 4.5, Gemini 3, DeepSeek V4 etc.
-        ("openai", "gpt-5.5", "thinking_mode"),
-        ("openai", "gpt-5",   "thinking_mode"),
-        ("openai", "gpt-5-mini", "thinking_mode"),
-        ("claude", "claude-opus-4.5", "thinking_mode"),
-        ("gemini", "gemini-3-pro", "thinking_mode"),
-        ("openai", "deepseek-v4", "thinking_mode"),
-        ("openai", "deepseek-r2", "thinking_mode"),
-    ])
+    @pytest.mark.parametrize(
+        "provider,model_name,must_include",
+        [
+            # Catalog rev2: GPT-5/5.5, Claude 4.5, Gemini 3, DeepSeek V4 etc.
+            ("openai", "gpt-5.5", "thinking_mode"),
+            ("openai", "gpt-5", "thinking_mode"),
+            ("openai", "gpt-5-mini", "thinking_mode"),
+            ("claude", "claude-opus-4.5", "thinking_mode"),
+            ("gemini", "gemini-3-pro", "thinking_mode"),
+            ("openai", "deepseek-v4", "thinking_mode"),
+            ("openai", "deepseek-r2", "thinking_mode"),
+        ],
+    )
     def test_recent_models_picked_up(
         self, provider: str, model_name: str, must_include: str
     ):
