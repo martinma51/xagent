@@ -7,7 +7,7 @@
 #     abilities: [chat, vision, tool_calling, thinking_mode]
 #
 # - <provider> is the provider id used in xagent (openai, claude, gemini,
-#   zhipu, dashscope, alibaba-coding-plan, alibaba-coding-plan-cn, zhipu,
+#   zhipu, dashscope, alibaba-coding-plan, alibaba-coding-plan-cn,
 #   zai-coding-plan, zhipuai-coding-plan, minimax-coding-plan,
 #   minimax-cn-coding-plan, kimi-for-coding, xinference, ...).
 #   Use "*" to match any provider, useful for OpenAI-compatible endpoints
@@ -71,6 +71,10 @@ rules:
 
   # ============================================================
   # Anthropic Claude
+  # NOTE: claude-5 family is not yet announced as of 2026-05-07. Latest
+  # released is Claude Opus 4.7 (2026-04-16), which is matched by the
+  # claude-opus-4* rule below. Add claude-5* rules only after public
+  # announcement.
   # ============================================================
   # Claude 4.5 (refresh, all support thinking)
   - pattern: "claude/claude-opus-4.5*"
@@ -134,6 +138,9 @@ rules:
 
   # ============================================================
   # Zhipu AI (GLM, direct API)
+  # NOTE: glm-4.5v is the multimodal variant of 4.5 (image/video input +
+  # thinking mode); it must be matched before glm-4.5* otherwise it loses
+  # vision.
   # ============================================================
   - pattern: "zhipu/glm-4.5v*"
     abilities: [chat, vision, tool_calling, thinking_mode]
@@ -262,6 +269,9 @@ rules:
 
   # ============================================================
   # Kimi for Coding (Moonshot)
+  # NOTE: K2.5 / K2.6 are native multimodal models with thinking mode;
+  # they must be matched before the generic kimi-k2* rule, otherwise
+  # they lose vision and thinking_mode.
   # ============================================================
   - pattern: "kimi-for-coding/kimi-k2.6*"
     abilities: [chat, vision, tool_calling, thinking_mode]
@@ -297,6 +307,8 @@ rules:
     abilities: [chat, thinking_mode]
   - pattern: "*/deepseek-r1*"
     abilities: [chat, thinking_mode]
+  # NOTE: DeepSeek V4 (released 2026-04-24) is text-only. Multimodal is on
+  # the roadmap but not yet shipped — do NOT add vision here.
   - pattern: "*/deepseek-v4*"
     abilities: [chat, tool_calling, thinking_mode]
   - pattern: "*/deepseek-v3.5*"
@@ -320,7 +332,7 @@ rules:
     abilities: [chat, tool_calling]
   - pattern: "*/qwen*"
     abilities: [chat, tool_calling]
-  # GLM via openai-compat
+  # GLM via openai-compat (4.5v is multimodal — must come before 4.5*)
   - pattern: "*/glm-4.5v*"
     abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "*/glm-4.5*"
@@ -335,10 +347,6 @@ rules:
   - pattern: "*/minimax-m2*"
     abilities: [chat, tool_calling]
   # Kimi / Moonshot via openai-compat
-  - pattern: "*/kimi-k2.6*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
-  - pattern: "*/kimi-k2.5*"
-    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "*/kimi-k2*"
     abilities: [chat, tool_calling]
   - pattern: "*/moonshot-v1*-vision*"
