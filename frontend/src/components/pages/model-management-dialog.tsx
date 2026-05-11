@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -91,11 +91,17 @@ export function ModelManagementDialog({
   //   Initialised to true when the dialog opens in edit mode so we never
   //   silently overwrite abilities the user previously chose.
   // - abilitySuggestion: the latest catalog response, used to render a hint.
+  // - suggestionRequestCounter: monotonic counter used to discard responses
+  //   from stale in-flight requests when the user types quickly (e.g. in
+  //   the edit-mode Input where every keystroke triggers a lookup). Without
+  //   this, an older request resolving after a newer one would overwrite
+  //   the UI with a stale suggestion.
   const [userTouchedAbilities, setUserTouchedAbilities] = useState(!!initialEditingModel)
   const [abilitySuggestion, setAbilitySuggestion] = useState<{
     source: "exact" | "wildcard_provider" | "none"
     matched_pattern: string | null
   } | null>(null)
+  const suggestionRequestCounter = useRef(0)
 
   const getDefaultAbilitiesForCategory = (category: string): string[] => {
     if (category === 'llm') return ['chat']
@@ -113,13 +119,23 @@ export function ModelManagementDialog({
    *
    * Only applies for category='llm' — other categories have a fixed,
    * single-ability shape that doesn't benefit from a catalog lookup.
+   *
+   * Race-condition safety: every call bumps a monotonic counter, and the
+   * response is only applied if the counter is still the latest when we
+   * resolve. This prevents an older keystroke's response from overwriting
+   * a newer one when network round-trips finish out of order.
    */
   const applyAbilitySuggestion = async (provider: string, modelName: string, category: string) => {
+    const requestId = ++suggestionRequestCounter.current
     if (category !== 'llm' || !provider || !modelName) {
       setAbilitySuggestion(null)
       return
     }
     const result = await getAbilitySuggestion(provider, modelName)
+    // A newer request has been fired since — drop this stale response.
+    if (requestId !== suggestionRequestCounter.current) {
+      return
+    }
     setAbilitySuggestion({ source: result.source, matched_pattern: result.matched_pattern })
     if (result.source !== 'none' && !userTouchedAbilities) {
       setFormData(prev => ({ ...prev, abilities: result.abilities }))
@@ -1025,10 +1041,7 @@ export function ModelManagementDialog({
                   <Label htmlFor="model_provider">{t('models.form.provider')}</Label>
                   <Select
                     value={formData.model_provider}
-                    onValueChange={(value) => {
-                      setAbilitySuggestion(null)
-                      setFormData({ ...formData, model_provider: value })
-                    }}
+                    onValueChange={(value) => setFormData({ ...formData, model_provider: value })}
                     disabled={!!editingModel}
                     options={providers
                       .filter(p => p.category.includes(formData.category as any))
