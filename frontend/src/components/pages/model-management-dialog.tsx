@@ -112,6 +112,16 @@ export function ModelManagementDialog({
   }
 
   /**
+   * Reset all "fresh wizard run" ability auto-fill state. Used wherever
+   * the user starts a new model_name selection from scratch (entering the
+   * wizard, switching category, switching provider).
+   */
+  const resetAbilitySuggestionState = () => {
+    setUserTouchedAbilities(false)
+    setAbilitySuggestion(null)
+  }
+
+  /**
    * Look up abilities for the chosen (provider, model_name) against the
    * backend catalog and, if the user hasn't manually touched the ability
    * buttons yet, apply the suggestion. Always updates `abilitySuggestion`
@@ -140,6 +150,20 @@ export function ModelManagementDialog({
     if (result.source !== 'none' && !userTouchedAbilities) {
       setFormData(prev => ({ ...prev, abilities: result.abilities }))
     }
+  }
+
+  /**
+   * Centralised handler for model_name changes. Used by both wizard and
+   * form-mode Inputs/Selects to avoid duplicating the setFormData +
+   * applyAbilitySuggestion pair. We read provider/category from the
+   * functional setState `prev` to avoid stale closure values when the
+   * user changes them in quick succession.
+   */
+  const handleModelNameChange = (newModelName: string) => {
+    setFormData(prev => {
+      void applyAbilitySuggestion(prev.model_provider, newModelName, prev.category)
+      return { ...prev, model_name: newModelName }
+    })
   }
 
   const resetConnectionState = () => {
@@ -284,8 +308,7 @@ export function ModelManagementDialog({
     const providerConfig = providers.find(p => p.id === managingProviderId)
     resetConnectionState()
     // Fresh wizard run -> drop any prior auto-fill state.
-    setUserTouchedAbilities(false)
-    setAbilitySuggestion(null)
+    resetAbilitySuggestionState()
     setFormData({
       model_id: "",
       category: activeTab,
@@ -569,8 +592,7 @@ export function ModelManagementDialog({
                           value={formData.category}
                           onValueChange={(value) => {
                             resetConnectionState()
-                            setUserTouchedAbilities(false)
-                            setAbilitySuggestion(null)
+                            resetAbilitySuggestionState()
                             setFormData(prev => ({
                               ...prev,
                               category: value,
@@ -615,8 +637,7 @@ export function ModelManagementDialog({
                                   resetConnectionState()
                                   // Provider change implies the prior model_name is gone, so any
                                   // earlier suggestion no longer applies. Allow auto-fill again.
-                                  setUserTouchedAbilities(false)
-                                  setAbilitySuggestion(null)
+                                  resetAbilitySuggestionState()
                                   setFormData(prev => ({
                                     ...prev,
                                     model_provider: provider.id,
@@ -739,10 +760,9 @@ export function ModelManagementDialog({
                         <Select
                           value={formData.model_name}
                           onValueChange={(val) => {
-                            setFormData({ ...formData, model_name: val })
+                            handleModelNameChange(val)
                             setTestConnectionStatus('idle')
                             setTestConnectionError(null)
-                            void applyAbilitySuggestion(formData.model_provider, val, formData.category)
                           }}
                           options={fetchedModels.map(m => ({ value: m.id, label: m.id }))}
                           placeholder={fetchedModels.length > 0 ? t('models.form.selectModel') : t('models.form.enterModelName')}
@@ -754,10 +774,9 @@ export function ModelManagementDialog({
                               ? prev
                               : [...prev, { id: val, object: "model", created: Date.now(), owned_by: formData.model_provider }]
                             )
-                            setFormData({ ...formData, model_name: val })
+                            handleModelNameChange(val)
                             setTestConnectionStatus('idle')
                             setTestConnectionError(null)
-                            void applyAbilitySuggestion(formData.model_provider, val, formData.category)
                           }}
                         />
                       </div>
@@ -1112,10 +1131,9 @@ export function ModelManagementDialog({
                     id="model_name"
                     value={formData.model_name}
                     onChange={(e) => {
-                      setFormData({ ...formData, model_name: e.target.value })
                       // Refresh the hint; userTouchedAbilities=true keeps
                       // the actual ability buttons intact (set in handleEdit).
-                      void applyAbilitySuggestion(formData.model_provider, e.target.value, formData.category)
+                      handleModelNameChange(e.target.value)
                     }}
                     placeholder={t('models.form.enterModelName')}
                   />
@@ -1123,8 +1141,7 @@ export function ModelManagementDialog({
                   <Select
                     value={formData.model_name}
                     onValueChange={(value) => {
-                      setFormData({ ...formData, model_name: value })
-                      void applyAbilitySuggestion(formData.model_provider, value, formData.category)
+                      handleModelNameChange(value)
                     }}
                     options={fetchedModels.map(m => ({ value: m.id, label: m.id }))}
                     placeholder={t('models.form.selectModel')}
@@ -1135,8 +1152,7 @@ export function ModelManagementDialog({
                       if (!fetchedModels.find(m => m.id === value)) {
                         setFetchedModels([...fetchedModels, { id: value, object: "model", created: Date.now(), owned_by: formData.model_provider }])
                       }
-                      setFormData({ ...formData, model_name: value })
-                      void applyAbilitySuggestion(formData.model_provider, value, formData.category)
+                      handleModelNameChange(value)
                     }}
                   />
                 )}

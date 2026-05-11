@@ -261,7 +261,8 @@ export async function getAbilitySuggestion(
       matched_pattern: data.matched_pattern ?? null,
       source: (data.source ?? "none") as AbilitySuggestion["source"],
     }
-  } catch {
+  } catch (error) {
+    console.error("Failed to get ability suggestion:", error)
     return { abilities: [], matched_pattern: null, source: "none" }
   }
 }
