@@ -347,6 +347,11 @@ rules:
   - pattern: "*/minimax-m2*"
     abilities: [chat, tool_calling]
   # Kimi / Moonshot via openai-compat
+  # K2.5 / K2.6 are native multimodal with thinking; must match before */kimi-k2*
+  - pattern: "*/kimi-k2.6*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
+  - pattern: "*/kimi-k2.5*"
+    abilities: [chat, vision, tool_calling, thinking_mode]
   - pattern: "*/kimi-k2*"
     abilities: [chat, tool_calling]
   - pattern: "*/moonshot-v1*-vision*"
