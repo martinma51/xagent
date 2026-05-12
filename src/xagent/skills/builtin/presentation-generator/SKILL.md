@@ -436,28 +436,6 @@ metrics.forEach((metric, i) => {
 
 pres.writeFile({ fileName: 'metrics.pptx' });
 ```
-};
-
-const slide1 = pres.addSlide();
-slide1.background = { color: theme.background };
-
-slide1.addText('Q4 Key Metrics', { x: 1, y: 0.8, fontSize: 52, bold: true, color: theme.primary });
-
-const metrics = [
-  { label: 'Revenue', value: '$1.5M', color: theme.success },
-  { label: 'Growth', value: '+25%', color: theme.accent },
-  { label: 'Customers', value: '86', color: theme.warning }
-];
-
-metrics.forEach((metric, i) => {
-  const x = 1 + (i % 3) * 3;
-  const y = 2.5 + Math.floor(i / 3) * 2;
-  slide1.addText(metric.label, { x, y: y, fontSize: 16, color: theme.secondary });
-  slide1.addText(metric.value, { x, y: y + 0.4, fontSize: 36, bold: true, color: metric.color });
-});
-
-pres.writeFile({ fileName: 'metrics.pptx' });
-```
 
 ### Minimalist Content (MINIMA - Founder Story)
 

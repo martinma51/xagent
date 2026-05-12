@@ -186,26 +186,31 @@ class PlanExecutor:
 
                 # Determine whether the ReAct sub-agent actually succeeded.
                 # ReAct's final answer payload carries a ``success`` flag; when the
-                # LLM determined the task could not be completed it returns
+                # LLM concludes the task cannot be completed it returns
                 # ``success: False``. Treating that as a "completed" step lets the
                 # task-level summary claim "Task completed successfully" even when
-                # every tool call inside failed, so we surface it as FAILED.
+                # every tool call inside failed, so we surface it as FAILED via
+                # the same exception path as other step failures — that way the
+                # DAG's failure recovery (dependency unblocking, trace, etc.)
+                # runs immediately instead of waiting for the deadlock detector.
                 sub_success = True
-                if isinstance(result, dict):
-                    raw_success = result.get("success")
-                    if raw_success is False:
-                        sub_success = False
+                if isinstance(result, dict) and result.get("success") is False:
+                    sub_success = False
 
                 step.result = result if isinstance(result, dict) else {"value": result}
-                if sub_success:
-                    step.status = StepStatus.COMPLETED
-                    completed_steps.add(step_id)
-                else:
-                    step.status = StepStatus.FAILED
-                    step.error = (
+
+                if not sub_success:
+                    failure_message = (
                         result.get("error") if isinstance(result, dict) else None
                     ) or "ReAct sub-agent reported success=false"
-                    step.error_type = "ReActFailure"
+                    raise DAGStepError(
+                        step_id=step.id,
+                        step_name=step.name,
+                        message=failure_message,
+                    )
+
+                step.status = StepStatus.COMPLETED
+                completed_steps.add(step_id)
 
                 # Add to execution results
                 execution_results.append(
