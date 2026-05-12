@@ -149,6 +149,15 @@ async def create_default_tools(
     # Create a WebToolConfig to properly initialize tools
     from ..tools.config import WebToolConfig
 
+    # Build allowed external directories so file tools can reach the user's
+    # uploads (the upload dir lives one level above the per-task workspace dir,
+    # so without this whitelist read_file/read_csv_file/list_files will reject
+    # uploaded files as "outside the allowed directory").
+    allowed_external_dirs: list[str] = []
+    user_upload_dir = get_uploads_dir() / f"user_{user.id}"
+    allowed_external_dirs.append(str(user_upload_dir))
+    allowed_external_dirs.extend([str(d) for d in get_external_upload_dirs()])
+
     tool_config = WebToolConfig(
         db=db,
         request=request,
@@ -159,6 +168,7 @@ async def create_default_tools(
         workspace_config={
             "base_dir": str(get_uploads_dir() / f"user_{user.id}"),
             "task_id": task_id,
+            "allowed_external_dirs": allowed_external_dirs,
         },
         include_mcp_tools=bool(
             allowed_tools and any(t.startswith("mcp_") for t in allowed_tools)
