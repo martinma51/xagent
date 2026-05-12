@@ -123,8 +123,14 @@ export function ModelManagementDialog({
    * Reset all "fresh wizard run" ability auto-fill state. Used wherever
    * the user starts a new model_name selection from scratch (entering the
    * wizard, switching category, switching provider).
+   *
+   * Bumps suggestionRequestCounter so that any applyAbilitySuggestion()
+   * already in flight from the previous selection has its response
+   * discarded — otherwise a stale fetch could resolve after the reset
+   * and auto-fill the form with the previous model's abilities.
    */
   const resetAbilitySuggestionState = () => {
+    suggestionRequestCounter.current++
     setUserTouched(false)
     setAbilitySuggestion(null)
   }
