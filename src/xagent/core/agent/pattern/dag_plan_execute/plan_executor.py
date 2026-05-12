@@ -203,9 +203,7 @@ class PlanExecutor:
                 else:
                     step.status = StepStatus.FAILED
                     step.error = (
-                        result.get("error")
-                        if isinstance(result, dict)
-                        else None
+                        result.get("error") if isinstance(result, dict) else None
                     ) or "ReAct sub-agent reported success=false"
                     step.error_type = "ReActFailure"
 
