@@ -256,10 +256,23 @@ export async function getAbilitySuggestion(
       return { abilities: [], matched_pattern: null, source: "none" }
     }
     const data = (await response.json()) as Partial<AbilitySuggestion>
+    // Whitelist-validate `source` instead of casting: an unexpected value
+    // from the backend would otherwise leak through the cast into React
+    // state and break downstream union-narrowing.
+    const validSources: AbilitySuggestion["source"][] = [
+      "exact",
+      "wildcard_provider",
+      "none",
+    ]
+    const source: AbilitySuggestion["source"] = validSources.includes(
+      data.source as AbilitySuggestion["source"],
+    )
+      ? (data.source as AbilitySuggestion["source"])
+      : "none"
     return {
       abilities: Array.isArray(data.abilities) ? data.abilities : [],
       matched_pattern: data.matched_pattern ?? null,
-      source: (data.source ?? "none") as AbilitySuggestion["source"],
+      source,
     }
   } catch (error) {
     console.error("Failed to get ability suggestion:", error)

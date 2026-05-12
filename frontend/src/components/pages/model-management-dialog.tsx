@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { getApiUrl } from "@/lib/utils"
 import { useAuth } from "@/contexts/auth-context"
 import { apiRequest } from "@/lib/api-wrapper"
-import { getAbilitySuggestion, getProviderModels, ProviderModel } from "@/lib/models"
+import { AbilitySuggestion, getAbilitySuggestion, getProviderModels, ProviderModel } from "@/lib/models"
 import {
   ArrowLeft,
   Plus,
@@ -97,10 +97,9 @@ export function ModelManagementDialog({
   //   this, an older request resolving after a newer one would overwrite
   //   the UI with a stale suggestion.
   const [userTouchedAbilities, setUserTouchedAbilities] = useState(!!initialEditingModel)
-  const [abilitySuggestion, setAbilitySuggestion] = useState<{
-    source: "exact" | "wildcard_provider" | "none"
-    matched_pattern: string | null
-  } | null>(null)
+  const [abilitySuggestion, setAbilitySuggestion] = useState<
+    Pick<AbilitySuggestion, "source" | "matched_pattern"> | null
+  >(null)
   const suggestionRequestCounter = useRef(0)
   // Mirror userTouchedAbilities in a ref so async callbacks see the latest
   // value rather than the closure-captured render-time value. Required so

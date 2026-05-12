@@ -64,8 +64,27 @@ class AbilitySuggestion:
     source: str  # "exact" | "wildcard_provider" | "none"
 
 
+@dataclass(frozen=True)
+class _RulesIndex:
+    """Rules pre-partitioned into the three matching tiers used by
+    :func:`lookup`, so each call iterates only the relevant slice instead
+    of scanning the entire catalog three times."""
+
+    tier1_exact_specific: tuple[CatalogRule, ...]
+    tier2_wildcard_specific: tuple[CatalogRule, ...]
+    tier3_provider_fallback: tuple[CatalogRule, ...]
+
+    @property
+    def all_rules(self) -> List[CatalogRule]:
+        return [
+            *self.tier1_exact_specific,
+            *self.tier2_wildcard_specific,
+            *self.tier3_provider_fallback,
+        ]
+
+
 _lock = threading.Lock()
-_rules_cache: Optional[List[CatalogRule]] = None
+_index_cache: Optional[_RulesIndex] = None
 
 
 def _parse_pattern(pattern: str) -> tuple[str, str]:
@@ -140,22 +159,50 @@ def _load_rules() -> List[CatalogRule]:
     return parsed
 
 
-def _get_rules() -> List[CatalogRule]:
-    global _rules_cache
-    if _rules_cache is None:
+def _partition_rules(rules: List[CatalogRule]) -> _RulesIndex:
+    """Bucket the flat rule list into the three resolution tiers so that
+    :func:`lookup` doesn't have to scan rules belonging to other tiers."""
+    t1: List[CatalogRule] = []
+    t2: List[CatalogRule] = []
+    t3: List[CatalogRule] = []
+    for rule in rules:
+        provider_wild = rule.provider_pattern == "*"
+        model_wild = rule.model_pattern == "*"
+        if not provider_wild and not model_wild:
+            t1.append(rule)
+        elif provider_wild and not model_wild:
+            t2.append(rule)
+        elif not provider_wild and model_wild:
+            t3.append(rule)
+        # "*/*" is meaningless — silently drop.
+    return _RulesIndex(
+        tier1_exact_specific=tuple(t1),
+        tier2_wildcard_specific=tuple(t2),
+        tier3_provider_fallback=tuple(t3),
+    )
+
+
+def _get_index() -> _RulesIndex:
+    global _index_cache
+    if _index_cache is None:
         with _lock:
-            if _rules_cache is None:
-                _rules_cache = _load_rules()
-    return _rules_cache
+            if _index_cache is None:
+                _index_cache = _partition_rules(_load_rules())
+    return _index_cache
+
+
+def _get_rules() -> List[CatalogRule]:
+    """Backwards-compatible flat view of all rules across tiers."""
+    return _get_index().all_rules
 
 
 def reload_catalog() -> int:
     """Force a re-read of the catalog YAML. Returns the number of rules
     loaded. Intended for tests / admin reload endpoints."""
-    global _rules_cache
+    global _index_cache
     with _lock:
-        _rules_cache = _load_rules()
-    return len(_rules_cache)
+        _index_cache = _partition_rules(_load_rules())
+    return len(_index_cache.all_rules)
 
 
 def lookup(provider: str, model_name: str) -> AbilitySuggestion:
@@ -168,19 +215,14 @@ def lookup(provider: str, model_name: str) -> AbilitySuggestion:
     if not model_norm:
         return AbilitySuggestion(abilities=[], matched_pattern=None, source="none")
 
-    rules = _get_rules()
+    index = _get_index()
 
     def _matches(rule: CatalogRule) -> bool:
         return fnmatch.fnmatchcase(model_norm, rule.model_pattern)
 
     # Tier 1: exact provider + specific model
-    for rule in rules:
-        if (
-            rule.provider_pattern != "*"
-            and rule.provider_pattern == provider_norm
-            and rule.model_pattern != "*"
-            and _matches(rule)
-        ):
+    for rule in index.tier1_exact_specific:
+        if rule.provider_pattern == provider_norm and _matches(rule):
             return AbilitySuggestion(
                 abilities=list(rule.abilities),
                 matched_pattern=f"{rule.provider_pattern}/{rule.model_pattern}",
@@ -188,12 +230,8 @@ def lookup(provider: str, model_name: str) -> AbilitySuggestion:
             )
 
     # Tier 2: wildcard provider + specific model
-    for rule in rules:
-        if (
-            rule.provider_pattern == "*"
-            and rule.model_pattern != "*"
-            and _matches(rule)
-        ):
+    for rule in index.tier2_wildcard_specific:
+        if _matches(rule):
             return AbilitySuggestion(
                 abilities=list(rule.abilities),
                 matched_pattern=f"*/{rule.model_pattern}",
@@ -201,12 +239,8 @@ def lookup(provider: str, model_name: str) -> AbilitySuggestion:
             )
 
     # Tier 3: provider-only fallback
-    for rule in rules:
-        if (
-            rule.provider_pattern != "*"
-            and rule.provider_pattern == provider_norm
-            and rule.model_pattern == "*"
-        ):
+    for rule in index.tier3_provider_fallback:
+        if rule.provider_pattern == provider_norm:
             return AbilitySuggestion(
                 abilities=list(rule.abilities),
                 matched_pattern=f"{rule.provider_pattern}/*",
