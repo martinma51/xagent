@@ -200,9 +200,18 @@ class PlanExecutor:
                 step.result = result if isinstance(result, dict) else {"value": result}
 
                 if not sub_success:
+                    # ReActPattern.run_with_context returns the LLM's failure
+                    # explanation under either ``error`` (when react.py wrote
+                    # an explicit failure final answer) or ``output`` (the
+                    # generic fallback wrapper). Prefer ``error``; fall back
+                    # to ``output``; finally a static string so the surfaced
+                    # message is never empty.
+                    failure_message = None
+                    if isinstance(result, dict):
+                        failure_message = result.get("error") or result.get("output")
                     failure_message = (
-                        result.get("error") if isinstance(result, dict) else None
-                    ) or "ReAct sub-agent reported success=false"
+                        failure_message or "ReAct sub-agent reported success=false"
+                    )
                     raise DAGStepError(
                         step_id=step.id,
                         step_name=step.name,
