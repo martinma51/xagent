@@ -102,6 +102,15 @@ export function ModelManagementDialog({
     matched_pattern: string | null
   } | null>(null)
   const suggestionRequestCounter = useRef(0)
+  // Mirror userTouchedAbilities in a ref so async callbacks see the latest
+  // value rather than the closure-captured render-time value. Required so
+  // an in-flight applyAbilitySuggestion can't overwrite an ability edit the
+  // user makes while the request is still in flight.
+  const userTouchedAbilitiesRef = useRef<boolean>(!!initialEditingModel)
+  const setUserTouched = (value: boolean) => {
+    userTouchedAbilitiesRef.current = value
+    setUserTouchedAbilities(value)
+  }
 
   const getDefaultAbilitiesForCategory = (category: string): string[] => {
     if (category === 'llm') return ['chat']
@@ -117,7 +126,7 @@ export function ModelManagementDialog({
    * wizard, switching category, switching provider).
    */
   const resetAbilitySuggestionState = () => {
-    setUserTouchedAbilities(false)
+    setUserTouched(false)
     setAbilitySuggestion(null)
   }
 
@@ -147,7 +156,9 @@ export function ModelManagementDialog({
       return
     }
     setAbilitySuggestion({ source: result.source, matched_pattern: result.matched_pattern })
-    if (result.source !== 'none' && !userTouchedAbilities) {
+    // Re-check the ref instead of the closure value: the user may have
+    // edited abilities while this network request was in flight.
+    if (result.source !== 'none' && !userTouchedAbilitiesRef.current) {
       setFormData(prev => ({ ...prev, abilities: result.abilities }))
     }
   }
@@ -283,7 +294,7 @@ export function ModelManagementDialog({
     // so we must not silently overwrite them when they tweak model_name.
     // The hint UI still updates so they can see what the catalog would
     // suggest for the new name.
-    setUserTouchedAbilities(true)
+    setUserTouched(true)
     setAbilitySuggestion(null)
     setFormData({
       model_id: model.model_id,
@@ -851,7 +862,7 @@ export function ModelManagementDialog({
                                   const abilities = formData.abilities || []
                                   resetConnectionState()
                                   // From this point on, never overwrite user choices from the catalog.
-                                  setUserTouchedAbilities(true)
+                                  setUserTouched(true)
                                   if (isSelected) setFormData({ ...formData, abilities: abilities.filter(a => a !== cap) })
                                   else setFormData({ ...formData, abilities: [...abilities, cap] })
                                 }}
@@ -1162,7 +1173,13 @@ export function ModelManagementDialog({
                 <Label className="mb-2 block">{t('models.form.abilities')}</Label>
                 <MultiSelect
                   values={formData.abilities || []}
-                  onValuesChange={(values) => setFormData({ ...formData, abilities: values })}
+                  onValuesChange={(values) => {
+                    // Mark abilities as user-touched so a later model_name
+                    // change in form mode doesn't auto-fill over the user's
+                    // explicit selection. Matches the wizard ability button.
+                    setUserTouched(true)
+                    setFormData({ ...formData, abilities: values })
+                  }}
                   options={
                     formData.category === 'llm' ? abilityOptions :
                       formData.category === 'embedding' ? embeddingAbilityOptions :
