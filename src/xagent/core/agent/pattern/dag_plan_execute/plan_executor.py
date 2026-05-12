@@ -184,41 +184,13 @@ class PlanExecutor:
                         is_builder_context,
                     )
 
-                # Determine whether the ReAct sub-agent actually succeeded.
-                # ReAct's final answer payload carries a ``success`` flag; when the
-                # LLM concludes the task cannot be completed it returns
-                # ``success: False``. Treating that as a "completed" step lets the
-                # task-level summary claim "Task completed successfully" even when
-                # every tool call inside failed, so we surface it as FAILED via
-                # the same exception path as other step failures — that way the
-                # DAG's failure recovery (dependency unblocking, trace, etc.)
-                # runs immediately instead of waiting for the deadlock detector.
-                sub_success = True
-                if isinstance(result, dict) and result.get("success") is False:
-                    sub_success = False
-
-                step.result = result if isinstance(result, dict) else {"value": result}
-
-                if not sub_success:
-                    # ReActPattern.run_with_context returns the LLM's failure
-                    # explanation under either ``error`` (when react.py wrote
-                    # an explicit failure final answer) or ``output`` (the
-                    # generic fallback wrapper). Prefer ``error``; fall back
-                    # to ``output``; finally a static string so the surfaced
-                    # message is never empty.
-                    failure_message = None
-                    if isinstance(result, dict):
-                        failure_message = result.get("error") or result.get("output")
-                    failure_message = (
-                        failure_message or "ReAct sub-agent reported success=false"
-                    )
-                    raise DAGStepError(
-                        step_id=step.id,
-                        step_name=step.name,
-                        message=failure_message,
-                    )
-
+                # Handle successful completion.
+                # ReAct's success=false case is converted into a DAGStepError
+                # INSIDE _execute_step_with_react_agent (before it stores
+                # step_execution_results / emits trace_step_end), so by the
+                # time we reach this line the step truly completed.
                 step.status = StepStatus.COMPLETED
+                step.result = result if isinstance(result, dict) else {"value": result}
                 completed_steps.add(step_id)
 
                 # Add to execution results
@@ -847,6 +819,24 @@ class PlanExecutor:
                 # to fire below, and we want the step to be marked as COMPLETED.
                 # The interrupt flags set above will cleanly break the execution loops.
 
+            # If the ReAct sub-agent's final answer explicitly reports failure,
+            # surface it as a failed step BEFORE we record execution results or
+            # emit a "completed" trace_step_end. The except block below catches
+            # the raise and emits trace_step_end(status: FAILED) so the
+            # frontend's DAG step view updates from running directly to failed
+            # without ever seeing a transient "completed" state.
+            if isinstance(result, dict) and result.get("success") is False:
+                failure_message = (
+                    result.get("error")
+                    or result.get("output")
+                    or "ReAct sub-agent reported success=false"
+                )
+                raise DAGStepError(
+                    step_id=step.id,
+                    step_name=step.name,
+                    message=failure_message,
+                )
+
             step.completed_at = datetime.now()
 
             # Store step execution result with complete message history for ContextBuilder
@@ -1017,6 +1007,19 @@ class PlanExecutor:
             await trace_error(
                 self.tracer,
                 trace_step_id,
+                data=error_trace_data,
+            )
+
+            # Also emit trace_step_end with FAILED status. The frontend
+            # routes step status off dag_step_end (not trace_error), so
+            # without this the UI would either still show the step as
+            # running, or — if the success path had already fired
+            # trace_step_end(completed) — keep displaying it as completed.
+            await trace_step_end(
+                self.tracer,
+                trace_step_id,
+                step.id,
+                TraceCategory.DAG,
                 data=error_trace_data,
             )
 
