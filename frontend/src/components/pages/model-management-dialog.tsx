@@ -1076,7 +1076,15 @@ export function ModelManagementDialog({
                   <Label htmlFor="model_provider">{t('models.form.provider')}</Label>
                   <Select
                     value={formData.model_provider}
-                    onValueChange={(value) => setFormData({ ...formData, model_provider: value })}
+                    onValueChange={(value) => {
+                      // Provider changed while model_name stays — re-run the
+                      // catalog lookup against the new provider so the hint
+                      // and suggested abilities match the new (provider, model).
+                      setFormData(prev => {
+                        void applyAbilitySuggestion(value, prev.model_name, prev.category)
+                        return { ...prev, model_provider: value }
+                      })
+                    }}
                     disabled={!!editingModel}
                     options={providers
                       .filter(p => p.category.includes(formData.category as any))
