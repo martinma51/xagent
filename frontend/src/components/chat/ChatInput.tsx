@@ -413,6 +413,11 @@ export function ChatInput({
     const isUploadingFiles = uploadingFiles.size > 0;
     return (hasText || hasFiles) && !isLoading && !isUploadingFiles;
   };
+  const canPauseTask =
+    taskStatus === 'running' ||
+    (isLoading &&
+      !!onPause &&
+      !['completed', 'failed', 'paused', 'waiting_for_user'].includes(taskStatus || ''));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -769,7 +774,7 @@ export function ChatInput({
               </div>
 
               <div className="flex items-center gap-3">
-                {taskStatus === 'running' ? (
+                {canPauseTask ? (
                   <Button
                     type="button"
                     size="icon"

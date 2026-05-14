@@ -1407,6 +1407,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             const taskPreview = eventData.task_preview || t('agent.header.badge.task')
 
             // Set processing state to true when task execution starts
+            dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "running" } })
             dispatch({ type: "SET_PROCESSING", payload: true })
 
             // Update DAG execution state to executing phase
@@ -1855,6 +1856,8 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
 
           // Step-level LLM Call Events - add to traceEvents for step execution logs
           else if (eventType === "llm_call_start") {
+            dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "running" } })
+            dispatch({ type: "SET_PROCESSING", payload: true })
             if (message.step_id) {
               const modelName = eventData.model_name || "LLM"
               const taskType = eventData.task_type || "LLM Call"
@@ -2515,6 +2518,8 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
 
           // ReAct Pattern Events - these should be displayed in the right panel
           else if (eventType === "react_task_start" || eventType === "task_start_react") {
+            dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "running" } })
+            dispatch({ type: "SET_PROCESSING", payload: true })
 
             // Add to trace events for displaying execution logs
             const traceEvent: TraceEvent = {
@@ -2593,6 +2598,8 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             }
             dispatch({ type: "ADD_TRACE_EVENT", payload: traceEvent })
           } else if (eventType === "llm_call_start") {
+            dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "running" } })
+            dispatch({ type: "SET_PROCESSING", payload: true })
             const stepId = message.step_id || traceEventData.step_id
             const traceEvent: TraceEvent = {
               event_id: generateMessageId("llm-call-start"),
