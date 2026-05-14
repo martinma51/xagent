@@ -2630,7 +2630,7 @@ async def send_historical_data_as_stream(
                     if isinstance(content, str) and content.strip():
                         if trace_event.event_type == "user_message":
                             trace_message_keys.add(("user", content.strip()))
-                        elif trace_event.event_type == "agent_message":
+                        elif trace_event.event_type in {"agent_message", "ai_message"}:
                             trace_message_keys.add(("assistant", content.strip()))
 
             for trace_event in trace_events:

@@ -1228,13 +1228,16 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
           }
 
           // Agent-to-user messages, including ask_user_question prompts.
-          else if (eventType === "agent_message") {
+          else if (eventType === "agent_message" || eventType === "ai_message") {
             const messageContent = eventData.message || eventData.content || ""
             if (!messageContent) {
               return
             }
             const interactions = normalizeInteractions(eventData.metadata?.interactions)
-            const expectsResponse = eventData.expect_response === true || eventData.message_type === "question"
+            const expectsResponse =
+              eventType === "agent_message" &&
+              (eventData.expect_response === true ||
+                eventData.message_type === "question")
             if (expectsResponse) {
               dispatch({
                 type: "UPDATE_TASK_STATUS",
@@ -1257,11 +1260,15 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                 content: messageContent,
                 rawContent: messageContent,
                 timestamp: message.timestamp,
-                status: "running",
+                status: eventData.status === "completed" ? "completed" : "running",
                 isResult: true,
                 interactions: interactions.length > 0 ? interactions : undefined,
               }
             })
+            if (eventData.status === "completed") {
+              dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "completed" } })
+              dispatch({ type: "SET_PROCESSING", payload: false })
+            }
           }
 
           // DAG Plan Events
