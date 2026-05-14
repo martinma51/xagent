@@ -2371,30 +2371,6 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               }
             }
 
-            // 3. Output execution result
-            const finalOutput = (resultData as any).output
-            if (finalOutput && finalOutput.trim() !== '') {
-              const resultContent = (
-                <div>
-                  <JsonRenderer data={finalOutput} onFileClick={openFilePreview} onAgentClick={(agentId) => router.push(`/agent/${agentId}`)} />
-                </div>
-              )
-              if (!isDuplicateResult(`📊 ${t('agent.logs.event.messages.executionResultPrefix')} ${finalOutput}`)) {
-                dispatch({
-                  type: "ADD_MESSAGE",
-                  payload: {
-                    id: generateMessageId("msg-task-result"),
-                    role: "assistant",
-                    content: resultContent,
-                    rawContent: typeof finalOutput === 'string' ? finalOutput : JSON.stringify(finalOutput, null, 2),
-                    timestamp: message.timestamp,
-                    status: success ? "completed" : "failed",
-                    isResult: true,
-                  }
-                })
-              }
-            }
-
             // Update task status and trigger sidebar update
             dispatch({
               type: "UPDATE_TASK_STATUS",
