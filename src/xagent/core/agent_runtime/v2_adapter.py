@@ -280,6 +280,8 @@ class AgentV2ExecutionAdapter:
         execution_id: str,
     ) -> dict[str, Any]:
         output = result.get("output", result.get("response", result.get("error")))
+        if not output:
+            output = self._latest_assistant_message(result.get("context"))
         status = result.get(
             "status",
             "completed" if result.get("success") else "failed",
@@ -298,3 +300,15 @@ class AgentV2ExecutionAdapter:
             },
             "agent_v2_result": result,
         }
+
+    def _latest_assistant_message(self, context: Any) -> str | None:
+        messages = getattr(context, "messages", None)
+        if not isinstance(messages, list):
+            return None
+        for message in reversed(messages):
+            if getattr(message, "role", None) != "assistant":
+                continue
+            content = getattr(message, "content", None)
+            if isinstance(content, str) and content:
+                return content
+        return None

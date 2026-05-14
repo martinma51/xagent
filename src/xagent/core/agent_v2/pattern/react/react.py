@@ -859,7 +859,15 @@ class ReActPattern(AgentPattern):
                 result={"message": message, "status": "sent"},
                 tool_call_id=tool_call.get("id"),
             )
-            return {"success": True, "status": "message_sent"}
+            if message:
+                context.add_assistant_message(message)
+            return {
+                "success": True,
+                "status": "message_sent",
+                "output": message,
+                "response": message,
+                "message": message,
+            }
 
         if name == "ask_user_question":
             message = str(args.get("message", ""))

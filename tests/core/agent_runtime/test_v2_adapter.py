@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -597,6 +598,7 @@ async def test_v2_adapter_forwards_outbound_messages() -> None:
     result = await adapter.execute(task="Send progress", task_id="outbound-exec")
 
     assert result["success"] is True
+    assert result["output"] == "done"
     assert sent_messages == [
         {
             "type": "agent_message",
@@ -607,6 +609,31 @@ async def test_v2_adapter_forwards_outbound_messages() -> None:
             "metadata": {},
         }
     ]
+
+
+def test_v2_adapter_uses_last_assistant_message_when_output_missing() -> None:
+    adapter = AgentV2ExecutionAdapter(
+        AgentV2ExecutionConfig(
+            name="fallback",
+            pattern="react",
+            llm=FakeLLM([]),
+            skill_manager=NoSkillManager(),
+        )
+    )
+    context = SimpleNamespace(
+        messages=[
+            SimpleNamespace(role="user", content="question"),
+            SimpleNamespace(role="assistant", content="answer from context"),
+        ]
+    )
+
+    result = adapter._normalize_result(
+        result={"success": True, "context": context},
+        execution_type="agent_v2_react",
+        execution_id="fallback-exec",
+    )
+
+    assert result["output"] == "answer from context"
 
 
 @pytest.mark.asyncio

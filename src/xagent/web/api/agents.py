@@ -864,6 +864,11 @@ async def preview_agent(
             },
         )
 
+        enhanced_system_prompt = enhance_system_prompt_with_kb(
+            request.instructions if request.instructions else None,
+            request.knowledge_bases if request.knowledge_bases is not None else None,
+        )
+
         # Create agent service (Langfuse only, no database/websocket logging)
         memory = InMemoryMemoryStore()
         agent_service = AgentService(
@@ -880,16 +885,14 @@ async def preview_agent(
             workspace_base_dir=str(get_uploads_dir() / "preview"),
             task_id=preview_task_id,  # Add task_id for proper tool initialization
             tracer=tracer,
+            system_prompt=enhanced_system_prompt,
+            memory_enabled=False,
         )
 
         # Execute task with system prompt in context
         execution_context = {}
-        if request.instructions:
-            execution_context["system_prompt"] = request.instructions
-        execution_context["system_prompt"] = enhance_system_prompt_with_kb(  # type: ignore[assignment]
-            execution_context.get("system_prompt"),
-            request.knowledge_bases if request.knowledge_bases is not None else None,
-        )
+        if enhanced_system_prompt:
+            execution_context["system_prompt"] = enhanced_system_prompt
 
         with UserContext(int(current_user.id)):
             result = await agent_service.execute_task(

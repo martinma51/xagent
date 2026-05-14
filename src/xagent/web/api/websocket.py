@@ -3924,6 +3924,13 @@ async def handle_build_preview_execution(
                     f"Preview is for published agent {preview_agent.id} ({preview_agent.name}), will exclude from agent tools"
                 )
 
+        # Execute task
+        from .agents import enhance_system_prompt_with_kb
+
+        enhanced_system_prompt = enhance_system_prompt_with_kb(
+            instructions or None, knowledge_bases
+        )
+
         # Determine execution mode and map to pattern.
         pattern = get_agent_pattern_for_execution_mode(execution_mode)
 
@@ -3959,6 +3966,8 @@ async def handle_build_preview_execution(
             allowed_external_dirs=allowed_external_dirs,
             task_id=preview_task_id,
             tracer=preview_tracer,
+            system_prompt=enhanced_system_prompt,
+            memory_enabled=False,
         )
 
         # Save agent service to websocket state for pause functionality
@@ -4084,22 +4093,15 @@ async def handle_build_preview_execution(
                 )
                 return
 
-        # Execute task
-        from .agents import enhance_system_prompt_with_kb
-
-        execution_context = {}
-        if instructions:
-            execution_context["system_prompt"] = instructions
+        execution_context: dict[str, Any] = {}
+        if enhanced_system_prompt:
+            execution_context["system_prompt"] = enhanced_system_prompt
         if file_prompt:
             if user_message:
                 user_message = f"{user_message}\n\n{file_prompt}"
             else:
                 user_message = file_prompt
 
-        # Emphasize KB priority when knowledge bases are configured
-        execution_context["system_prompt"] = enhance_system_prompt_with_kb(
-            execution_context.get("system_prompt"), knowledge_bases
-        )
         if uploaded_files:
             execution_context["uploaded_files"] = uploaded_files
         if file_info_list:
