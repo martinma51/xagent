@@ -4,10 +4,11 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 import unicodedata
 import uuid
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, cast
 from urllib.parse import unquote
@@ -33,7 +34,7 @@ from ...config import (
 from ...core.agent.trace import TraceEvent, TraceHandler
 from ..auth_dependencies import get_user_from_websocket_token
 from ..models.database import get_db
-from ..models.task import Task
+from ..models.task import Task, TaskStatus
 from ..models.uploaded_file import UploadedFile
 from ..models.user import User
 from ..services.chat_history_service import get_latest_waiting_question
@@ -1288,8 +1289,6 @@ class SharedWebSocketTracer(TraceHandler):
 
     def _serialize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Recursively serialize data to ensure JSON compatibility."""
-        import json
-        from datetime import datetime, timezone
 
         def clean_string(value: str) -> str:
             if not isinstance(value, str):
@@ -1578,9 +1577,8 @@ async def handle_file_upload_for_task(
                                     f"symlink failed ({link_err}); copying "
                                     f"{source_path.name} into workspace"
                                 )
-                                import shutil as _shutil
 
-                                _shutil.copy2(source_path, candidate)
+                                shutil.copy2(source_path, candidate)
                                 workspace_link_path = candidate
                         else:
                             workspace_link_path = candidate
@@ -1689,24 +1687,20 @@ async def handle_chat_message(
         # "I don't see any documents" despite a successful HTTP upload.
         if not files and user is not None:
             try:
-                from datetime import datetime, timedelta, timezone
-
-                from sqlalchemy.orm import Session as _Session
-
-                from ..models.database import get_db as _get_db
-                from ..models.uploaded_file import UploadedFile as _UF
-
-                with closing(_get_db()) as _db_iter:
-                    _db: _Session = next(_db_iter)
-                    cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
+                with closing(get_db()) as _db_iter:
+                    _db: Session = next(_db_iter)
+                    cutoff = datetime.now(timezone.utc).replace(
+                        tzinfo=None
+                    ) - timedelta(minutes=5)
                     pending = (
-                        _db.query(_UF)
+                        _db.query(UploadedFile)
                         .filter(
-                            _UF.user_id == int(user.id),
-                            (_UF.task_id == int(task_id)) | (_UF.task_id.is_(None)),
-                            _UF.created_at >= cutoff,
+                            UploadedFile.user_id == int(user.id),
+                            (UploadedFile.task_id == int(task_id))
+                            | (UploadedFile.task_id.is_(None)),
+                            UploadedFile.created_at >= cutoff,
                         )
-                        .order_by(_UF.created_at.desc())
+                        .order_by(UploadedFile.created_at.desc())
                         .all()
                     )
                     if pending:
@@ -1739,10 +1733,6 @@ async def handle_chat_message(
 
         # Call Agent to handle - use same agent manager as chat API
         try:
-            from sqlalchemy.orm import Session
-
-            from ..models.database import get_db
-            from ..models.task import Task, TaskStatus
             from ..services.chat_history_service import (
                 load_task_transcript,
                 persist_user_message,
