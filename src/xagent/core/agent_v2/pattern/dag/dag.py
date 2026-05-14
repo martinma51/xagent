@@ -669,7 +669,6 @@ class DAGPattern(AgentPattern):
                     "dag_step_description": step.description or step.task,
                     "dag_dependencies": list(step.dependencies),
                     "dag_tool_names": list(step.tool_names),
-                    "dag_original_goal": latest_user_text(root_context).strip(),
                 },
             )
             if step.dependencies:
@@ -721,9 +720,10 @@ class DAGPattern(AgentPattern):
             },
         )
         try:
+            step_tools = self._tools_for_step(tools, step.tool_names)
             result = await react_pattern.run(
                 context=child_context,
-                tools=tools,
+                tools=step_tools,
                 llm=llm,
                 runtime=step_runtime,
                 memory_store=memory_store,
@@ -1028,7 +1028,7 @@ class DAGPattern(AgentPattern):
         return {dep: self.step_results.get(dep) for dep in step.dependencies}
 
     def _step_instruction(self, *, root_context: Any, step: PlanStep) -> str:
-        original_goal = latest_user_text(root_context).strip()
+        del root_context
         dependency_note = (
             "Dependency results, if any, are provided immediately before this "
             "message. Use them as inputs for this step only."
@@ -1038,23 +1038,30 @@ class DAGPattern(AgentPattern):
         suggested_tools = ", ".join(step.tool_names) if step.tool_names else "(none)"
         return (
             "DAG STEP EXECUTION BOUNDARY\n"
-            f"Overall user goal: {original_goal or '(not provided)'}\n\n"
+            "The overall user goal is background context only. Do not execute it "
+            "directly and do not use it to expand the current step's completion "
+            "criteria.\n\n"
+            "CURRENT STEP - ONLY EXECUTABLE GOAL\n"
             f"Current DAG step id: {step.id}\n"
             f"Current DAG step title: {step.task}\n"
             f"Current DAG step description: {step.description or step.task}\n"
             f"Current DAG step dependencies: {list(step.dependencies)}\n"
             f"Suggested tools for this step: {suggested_tools}\n\n"
             f"{dependency_note}\n\n"
-            "Execute only the current DAG step. Do not complete downstream, "
-            "sibling, final synthesis, rendering, export, or delivery work unless "
-            "that work is explicitly part of this current step description. If the "
-            "overall user goal asks for more work than this step describes, leave "
-            "that work for later DAG steps. Treat the suggested tools as the primary "
-            "tool scope for this step. Prefer those tools and avoid other tools unless "
-            "this current step cannot be completed or recovered without them. If no "
-            "suggested tools are listed, do not call tools unless the step clearly "
-            "cannot be completed from the provided context and dependency results. "
-            "When this step is done, return a final answer for this step only."
+            "Execute only the current DAG step. The current step title and "
+            "description define the entire actionable goal for this ReAct run. "
+            "Do not infer extra work from the overall user goal. Do not complete "
+            "downstream, sibling, final synthesis, rendering, screenshots, visual "
+            "inspection, export, or delivery work unless that work is explicitly "
+            "part of this current step description. If the current step creates an "
+            "artifact that a later step will render, inspect, export, or deliver, "
+            "stop after creating that artifact and report it as this step's result. "
+            "Treat the suggested tools as the primary tool scope for this step. "
+            "Prefer those tools and avoid other tools unless this current step "
+            "cannot be completed or recovered without them. If no suggested tools "
+            "are listed, do not call tools unless the step clearly cannot be "
+            "completed from the provided context and dependency results. When this "
+            "step is done, return a final answer for this step only."
         )
 
     async def _generate_plan(
@@ -1199,6 +1206,27 @@ class DAGPattern(AgentPattern):
 
     def _user_message_count(self, context: Any) -> int:
         return sum(1 for message in context.messages if message.role == "user")
+
+    def _tools_for_step(
+        self,
+        tools: list[Any],
+        suggested_tool_names: list[str],
+    ) -> list[Any]:
+        suggested_order = [
+            name.strip() for name in suggested_tool_names if name and name.strip()
+        ]
+        if not suggested_order:
+            return tools
+
+        rank = {name: index for index, name in enumerate(suggested_order)}
+        ordered = sorted(
+            enumerate(tools),
+            key=lambda item: (
+                rank.get(self._tool_name(item[1]), len(rank)),
+                item[0],
+            ),
+        )
+        return [tool for _, tool in ordered]
 
     def _tool_name(self, tool: Any) -> str:
         metadata = getattr(tool, "metadata", None)

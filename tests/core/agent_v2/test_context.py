@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from xagent.core.agent_v2.context import (
@@ -351,9 +353,12 @@ def test_write_file_tool_call_omits_content_from_context() -> None:
 
     tool_call = ctx.messages[-1].tool_calls[0]
     arguments = tool_call["function"]["arguments"]
-    assert "omitted from LLM context" in arguments
+    parsed = json.loads(arguments)
+    assert "content" not in parsed
+    assert parsed["content_omitted"] is True
+    assert parsed["content_chars"] == len(content)
+    assert parsed["file_path"] == "index.html"
     assert content not in arguments
-    assert "content_preview" in arguments
 
 
 def test_get_messages_for_llm_filters_hidden_and_truncates() -> None:
@@ -413,7 +418,9 @@ def test_get_messages_for_llm_omits_current_request_focus_for_dag_step() -> None
     system_content = result[0]["content"]
     assert "Current user request:" not in system_content
     assert "DAG step execution scope:" in system_content
+    assert "Create two posters." not in system_content
     assert "Only execute the current DAG step" in system_content
+    assert [message["role"] for message in result].count("system") == 1
 
 
 def test_get_messages_for_llm_coalesces_system_messages() -> None:

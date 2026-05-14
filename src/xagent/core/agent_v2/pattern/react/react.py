@@ -1062,7 +1062,12 @@ class ReActPattern(AgentPattern):
         }
 
     def _tool_result_success(self, result: Any) -> bool:
-        return not (isinstance(result, dict) and result.get("success") is False)
+        if not isinstance(result, dict):
+            return True
+        if result.get("success") is False:
+            return False
+        status = result.get("status")
+        return not (isinstance(status, str) and status.lower() == "error")
 
     async def _interrupt_if_requested(
         self,
@@ -1117,7 +1122,7 @@ class ReActPattern(AgentPattern):
             )
             return error_result
 
-        if isinstance(result, dict) and result.get("success") is False:
+        if not self._tool_result_success(result):
             error_message = str(result.get("error") or result.get("message") or result)
             await runtime.on_tool_error(
                 tool_call=tool_call,

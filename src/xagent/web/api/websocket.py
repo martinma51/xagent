@@ -3363,8 +3363,9 @@ Important instructions:
    - If the agent is meant to be an FAQ bot, customer service bot, or answer specific organizational questions, it ABSOLUTELY REQUIRES a knowledge base. Do NOT assume it can answer from general knowledge.
    - If the user HAS provided a URL: Do NOT ask the user again, but you STILL MUST call `list_knowledge_bases` first to see whether a relevant knowledge base already exists for that website/domain.
    - Only if no relevant knowledge base exists after checking `list_knowledge_bases`, you MUST use the `create_knowledge_base_from_url` tool to import the website, and then proceed to create or update the agent with the appropriate knowledge base.
-   - If the user HAS NOT provided a URL or file: You MUST STOP and ask the user for clarification using the `ask_user_question` tool to request them to upload a file or provide a URL. Use the "action_cards" interaction type ONLY for high-level actions like "Import Website" and "Upload File". If you know the user's intended website URL but it hasn't been crawled yet, you MUST pass that URL into the "default_value" field of the interaction. For selecting from a list of existing items (like existing knowledge bases), you MUST use the "select_one" interaction type instead. When using "action_cards" for knowledge base, provide two options: one with `action_type="input_url"` and another with `action_type="upload"`.
-     CRITICAL INSTRUCTION: You MUST set your DECISION JSON type to "tool_call" to invoke `ask_user_question`. Your text reasoning should explain why you are asking the user. The system will then prompt you to generate the native tool call parameters. Do NOT include the "message" or "interactions" in your DECISION JSON block.
+   - If `list_knowledge_bases` does not return the exact requested knowledge base and the user has not provided a URL or file: It is INVALID to call `create_agent` or `update_agent` with that missing knowledge base. You MUST STOP and ask the user for clarification using the `ask_user_question` tool to request them to upload a file, provide a URL, or pick an existing knowledge base. Use the "action_cards" interaction type ONLY for high-level actions like "Import Website" and "Upload File". If you know the user's intended website URL but it hasn't been crawled yet, you MUST pass that URL into the "default_value" field of the interaction. For selecting from a list of existing items (like existing knowledge bases), you MUST use the "select_one" interaction type instead. When using "action_cards" for knowledge base, provide two options: one with `action_type="input_url"` and another with `action_type="upload"`.
+     CRITICAL INSTRUCTION: Call the native `ask_user_question` tool directly with a concise message and structured interactions. Do not write the question as plain assistant text.
+   - If `create_agent` or `update_agent` reports that a knowledge base was not found, your next action MUST be `ask_user_question`. Do not answer in plain text.
    - Do NOT proceed to create or update the agent until the knowledge base is ready.
 
 File upload handling:
@@ -3431,7 +3432,6 @@ If the user wants to add skills, tool categories, or knowledge bases but you are
                 ListToolCategoriesTool,
                 UpdateAgentTool,
             )
-            from ...core.tools.adapters.vibe.ask_user_tool import AskUserQuestionTool
             from ...core.tools.adapters.vibe.document_search import (
                 ListKnowledgeBasesTool,
             )
@@ -3460,7 +3460,6 @@ If the user wants to add skills, tool categories, or knowledge bases but you are
             list_kbs_tool = ListKnowledgeBasesTool(
                 user_id=int(user.id), is_admin=bool(user.is_admin)
             )
-            ask_user_question_tool = AskUserQuestionTool()
             create_kb_url_tool = CreateKnowledgeBaseFromUrlTool(
                 user_id=int(user.id), is_admin=bool(user.is_admin)
             )
@@ -3489,11 +3488,11 @@ If the user wants to add skills, tool categories, or knowledge bases but you are
                     list_skills_tool,
                     list_tool_categories_tool,
                     list_kbs_tool,
-                    ask_user_question_tool,
                     create_kb_url_tool,
                     create_kb_file_tool,
                 ],
-                use_dag_pattern=False,  # Use ReAct pattern
+                pattern="react",
+                agent_runtime="v2",
                 id=builder_task_id,
                 enable_workspace=True,
                 workspace_base_dir=str(get_uploads_dir() / "builder_chat"),
@@ -3503,12 +3502,16 @@ If the user wants to add skills, tool categories, or knowledge bases but you are
             )
 
             # Save agent service to websocket state for reuse
+            # Builder chat has a fixed product workflow, so it should not perform
+            # generic skill auto-selection such as selecting the agent-builder skill.
+            agent_service.set_allowed_skills([])
             websocket.state.builder_agent_service = agent_service
             logger.info(
                 f"Created new builder chat agent service with task_id: {builder_task_id}"
             )
         else:
             agent_service = websocket.state.builder_agent_service
+            agent_service.set_allowed_skills([])
             # Update tracer to the new connection
             agent_service.tracer = builder_tracer
             # Defensive initialization for service reuse
@@ -3548,6 +3551,13 @@ If the user wants to add skills, tool categories, or knowledge bases but you are
                     context=execution_context,
                     task_id=builder_task_id,
                 )
+
+            if result.get("status") == "waiting_for_user":
+                result["chat_response"] = {
+                    "message": result.get("message", ""),
+                    "interactions": result.get("interactions", []),
+                }
+                result.setdefault("output", result.get("message", ""))
 
             # Append interaction to chat history
             if hasattr(websocket.state, "builder_chat_history"):

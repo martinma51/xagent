@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -792,10 +793,28 @@ class AutoPattern(AgentPattern):
         try:
             payload = json.loads(arguments)
         except json.JSONDecodeError as exc:
-            raise ValueError("Tool call arguments must be valid JSON.") from exc
+            repaired_arguments = self._repair_empty_string_arguments(arguments)
+            if repaired_arguments == arguments:
+                raise ValueError("Tool call arguments must be valid JSON.") from exc
+            try:
+                payload = json.loads(repaired_arguments)
+            except json.JSONDecodeError:
+                raise ValueError("Tool call arguments must be valid JSON.") from exc
         if not isinstance(payload, dict):
             raise TypeError("Tool call arguments must decode to an object.")
         return payload
+
+    def _repair_empty_string_arguments(self, arguments: str) -> str:
+        """Repair common model omission of an empty string value in tool JSON."""
+        empty_string_fields = ("missing_verification",)
+        repaired = arguments
+        for field in empty_string_fields:
+            repaired = re.sub(
+                rf'("{re.escape(field)}"\s*:\s*)(?=[,}}])',
+                r'\1""',
+                repaired,
+            )
+        return repaired
 
     def _selected_child(self) -> AgentPattern:
         if self.decision is None:

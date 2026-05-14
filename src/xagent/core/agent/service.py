@@ -616,6 +616,12 @@ class AgentService:
         if self._v2_adapter is not None:
             self._v2_adapter.config.outbound_message_handler = handler
 
+    def set_allowed_skills(self, allowed_skills: Optional[List[str]]) -> None:
+        """Set the skill allow-list and propagate it to a cached v2 adapter."""
+        self.allowed_skills = allowed_skills
+        if self._v2_adapter is not None:
+            self._v2_adapter.config.allowed_skills = allowed_skills
+
     def supports_v2_control(self) -> bool:
         return self.agent_runtime == "v2"
 

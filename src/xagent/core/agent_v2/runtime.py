@@ -321,8 +321,12 @@ class PatternRuntime:
             await self._maybe_await(finish_span(**payload))
 
     def _tool_result_success(self, result: Any) -> bool:
-        if isinstance(result, dict) and result.get("success") is False:
-            return False
+        if isinstance(result, dict):
+            if result.get("success") is False:
+                return False
+            status = result.get("status")
+            if isinstance(status, str) and status.lower() == "error":
+                return False
         return True
 
     def _tool_result_error(self, result: Any) -> Exception:

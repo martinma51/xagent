@@ -57,14 +57,16 @@ class FakeWorkspaceManager:
 
 
 class FakeTool:
-    def __init__(self) -> None:
+    def __init__(self, name: str = "calculator") -> None:
         self.calls: list[dict[str, Any]] = []
-
-        class Metadata:
-            name = "calculator"
-            description = "Evaluate math expressions."
-
-        self.metadata = Metadata()
+        self.metadata = type(
+            "Metadata",
+            (),
+            {
+                "name": name,
+                "description": f"{name} test tool.",
+            },
+        )()
 
     def args_type(self) -> type:
         class Args:
@@ -434,13 +436,56 @@ async def test_dag_step_appends_current_step_boundary_after_parent_context() -> 
     assert messages[-1]["role"] == "user"
     assert "DAG STEP EXECUTION BOUNDARY" in messages[-1]["content"]
     assert "Current DAG step id: extract" in messages[-1]["content"]
+    assert "CURRENT STEP - ONLY EXECUTABLE GOAL" in messages[-1]["content"]
     assert "Execute only the current DAG step" in messages[-1]["content"]
-    assert "leave that work for later DAG steps" in messages[-1]["content"]
+    assert (
+        "Do not infer extra work from the overall user goal" in messages[-1]["content"]
+    )
+    assert "stop after creating that artifact" in messages[-1]["content"]
     assert messages[0]["role"] == "system"
+    assert [message["role"] for message in messages].count("system") == 1
     assert "DAG step execution scope" in messages[0]["content"]
     assert "Overall user goal is background context only" in messages[0]["content"]
+    assert "Extract highlights and generate two posters." not in messages[0]["content"]
+    assert "Extract highlights and generate two posters." not in messages[-1]["content"]
     assert "Current step id: extract" in messages[0]["content"]
-    assert "Treat suggested tools as the primary tool scope" in messages[0]["content"]
+    assert "Detailed step boundary rules" in messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_dag_step_prioritizes_suggested_tools_without_filtering() -> None:
+    llm = SequenceLLM([{"content": "done", "done": True}])
+    plan = build_plan(
+        PlanStep(
+            id="design",
+            task="Write poster HTML",
+            tool_names=["write_file", "read_file"],
+        )
+    )
+    pattern = DAGPattern(lambda **_: plan)
+    context = ExecutionContext(execution_id="dag-tool-order")
+    tools = [
+        FakeTool("browser_screenshot"),
+        FakeTool("write_file"),
+        FakeTool("read_file"),
+        FakeTool("browser_navigate"),
+    ]
+
+    result = await pattern.run(context=context, tools=tools, llm=llm)
+
+    assert result["success"] is True
+    tool_names = [
+        schema["function"]["name"]
+        for schema in llm.call_kwargs[0]["tools"]
+        if schema["function"]["name"]
+        not in {"final_answer", "send_message", "ask_user_question"}
+    ]
+    assert tool_names == [
+        "write_file",
+        "read_file",
+        "browser_screenshot",
+        "browser_navigate",
+    ]
 
 
 @pytest.mark.asyncio

@@ -167,6 +167,27 @@ def decision_tool_response(
     }
 
 
+def malformed_empty_missing_verification_decision_tool_response() -> dict[str, Any]:
+    return {
+        "tool_calls": [
+            {
+                "id": f"call_{DECISION_TOOL_NAME}",
+                "type": "function",
+                "function": {
+                    "name": DECISION_TOOL_NAME,
+                    "arguments": (
+                        '{"action":"plan_execute","reason":"Needs DAG.",'
+                        '"requires_current_or_external_facts":false,'
+                        '"existing_context_sufficient":true,'
+                        '"evidence_basis":"current conversation",'
+                        '"missing_verification":}'
+                    ),
+                },
+            }
+        ]
+    }
+
+
 @pytest.mark.asyncio
 async def test_auto_decision_sees_memory_and_skill_context() -> None:
     llm = FakeLLM(
@@ -606,6 +627,26 @@ async def test_auto_pattern_plan_execute_decision_delegates_to_dag() -> None:
     assert "dag_step_end" in hook_names
     assert hook_names.count("llm_start") >= 1
     assert hook_names.count("llm_end") >= 1
+
+
+@pytest.mark.asyncio
+async def test_auto_pattern_repairs_empty_missing_verification_argument() -> None:
+    llm = FakeLLM(
+        [
+            malformed_empty_missing_verification_decision_tool_response(),
+            plan_tool_response([{"id": "answer", "task": "Answer directly"}]),
+            "dag done",
+        ]
+    )
+    pattern = AutoPattern(dag_pattern=DAGPattern(LLMPlanGenerator()))
+    context = ExecutionContext()
+    context.add_user_message("Plan then answer")
+
+    result = await pattern.run(context=context, tools=[], llm=llm)
+
+    assert result["success"] is True
+    assert result["auto_decision"]["action"] == "plan_execute"
+    assert result["auto_decision"]["missing_verification"] == ""
 
 
 @pytest.mark.asyncio

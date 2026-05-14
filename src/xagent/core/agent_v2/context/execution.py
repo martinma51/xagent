@@ -19,7 +19,6 @@ from .enrichment import MEMORY_CONTEXT_METADATA_KEY, SKILL_CONTEXT_METADATA_KEY
 from .message import LLMCallRecord, Message
 
 READ_FILE_CONTEXT_LIMIT = 12_000
-WRITE_FILE_CONTENT_PREVIEW_LIMIT = 400
 
 
 def _utcnow() -> datetime:
@@ -243,17 +242,11 @@ class ExecutionContext:
 
     def _sanitize_write_file_args_dict(self, args: dict[str, Any]) -> dict[str, Any]:
         sanitized = dict(args)
-        content = sanitized.get("content")
+        content = sanitized.pop("content", None)
         if not isinstance(content, str):
             return sanitized
-        sanitized["content"] = (
-            f"[omitted from LLM context: write_file content, {len(content)} chars]"
-        )
-        if content:
-            sanitized["content_preview"] = content[:WRITE_FILE_CONTENT_PREVIEW_LIMIT]
-            sanitized["content_truncated"] = (
-                len(content) > WRITE_FILE_CONTENT_PREVIEW_LIMIT
-            )
+        sanitized["content_omitted"] = True
+        sanitized["content_chars"] = len(content)
         return sanitized
 
     def _looks_like_binary_text(self, value: str) -> bool:
@@ -364,26 +357,19 @@ class ExecutionContext:
                 ", ".join(str(name) for name in dag_tool_names if str(name).strip())
                 or "(none)"
             )
-            original_goal = str(self.metadata.get("dag_original_goal") or "").strip()
             parts.append(
                 "DAG step execution scope:\n"
-                f"- Overall user goal is background context only: "
-                f"{original_goal or '(not provided)'}\n"
+                "- Overall user goal is background context only and is already "
+                "available in the conversation when needed; do not treat it as "
+                "the executable goal for this step.\n"
                 f"- Current step id: {dag_step_id}\n"
                 f"- Current step title: {dag_step_name or dag_step_id}\n"
                 f"- Current step description: "
                 f"{dag_step_description or dag_step_name or dag_step_id}\n"
                 f"- Current step dependencies: {dag_dependencies}\n"
                 f"- Suggested tools for this step: {suggested_tools}\n\n"
-                "Only execute the current DAG step. Do not perform sibling, "
-                "downstream, final synthesis, rendering, export, or delivery work "
-                "unless that work is explicitly part of the current step description. "
-                "Use dependency results only as inputs for this step. Treat suggested "
-                "tools as the primary tool scope: prefer them and avoid other tools "
-                "unless this current step cannot be completed or recovered without "
-                "them. If no suggested tools are listed, avoid tool calls unless the "
-                "step clearly cannot be completed from provided context and dependency "
-                "results."
+                "Only execute the current DAG step. Detailed step boundary rules are "
+                "provided in the latest DAG step instruction message."
             )
         memory_context = self.metadata.get(MEMORY_CONTEXT_METADATA_KEY)
         if memory_context:

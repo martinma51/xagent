@@ -67,6 +67,18 @@ class FailingResultTool:
         return {"success": False, "output": "", "error": f"failed with {args}"}
 
 
+class StatusErrorResultTool:
+    def __init__(self) -> None:
+        class Metadata:
+            name = "status_error_result"
+            description = "Returns a status=error tool result."
+
+        self.metadata = Metadata()
+
+    async def run_json_async(self, args: dict[str, Any]) -> Any:
+        return {"status": "error", "message": f"failed with {args}"}
+
+
 class FakeAskUserTool:
     def __init__(self) -> None:
         class Metadata:
@@ -1236,6 +1248,46 @@ async def test_react_pattern_failed_tool_result_emits_tool_error_trace() -> None
     assert react_step_id is not None
     assert react_step_id.startswith("react_")
     assert react_step_id != "failed-result"
+
+
+@pytest.mark.asyncio
+async def test_react_pattern_status_error_tool_result_is_failed() -> None:
+    tracer = TraceEventRecorder()
+    llm = FakeLLM(
+        responses=[
+            {
+                "content": "Use failing tool.",
+                "tool_calls": [
+                    {
+                        "id": "call_status_error_result",
+                        "function": {
+                            "name": "status_error_result",
+                            "arguments": '{"value":3}',
+                        },
+                    }
+                ],
+            },
+            {"content": "Recovered after status error tool result."},
+        ]
+    )
+    pattern = ReActPattern(max_iterations=3)
+    context = ExecutionContext(execution_id="status-error-result")
+    context.add_user_message("Recover")
+    runtime = PatternRuntime(tracer=tracer)
+
+    result = await pattern.run(
+        context=context,
+        tools=[StatusErrorResultTool()],
+        llm=llm,
+        runtime=runtime,
+    )
+
+    assert result["success"] is True
+    tool_message = context.get_messages_by_role("tool")[0]
+    assert tool_message.metadata["raw_result"]["status"] == "error"
+    assert pattern.tool_ledger["call_status_error_result"].status == "failed"
+    event_types = {event["event_type"] for event in tracer.events}
+    assert "action_error_tool" in event_types
 
 
 @pytest.mark.asyncio
