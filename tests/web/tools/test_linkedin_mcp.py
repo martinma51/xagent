@@ -62,6 +62,7 @@ async def test_create_post_without_image_keeps_text_only_flow(monkeypatch):
 @pytest.mark.asyncio
 async def test_create_post_with_image_uploads_and_attaches_media(monkeypatch, tmp_path):
     monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("XAGENT_LINKEDIN_IMAGE_ALLOWED_DIRS", str(tmp_path))
     image_path = tmp_path / "generated.png"
     image_path.write_bytes(b"png-bytes")
 
@@ -124,3 +125,38 @@ async def test_create_post_with_image_uploads_and_attaches_media(monkeypatch, tm
             "altText": "Generated AI visual",
         }
     }
+
+
+@pytest.mark.asyncio
+async def test_create_post_rejects_image_outside_allowed_dirs(monkeypatch, tmp_path):
+    monkeypatch.setenv("LINKEDIN_ACCESS_TOKEN", "token")
+    allowed_dir = tmp_path / "allowed"
+    blocked_dir = tmp_path / "blocked"
+    allowed_dir.mkdir()
+    blocked_dir.mkdir()
+    image_path = blocked_dir / "secret.png"
+    image_path.write_bytes(b"png-bytes")
+    monkeypatch.setenv("XAGENT_LINKEDIN_IMAGE_ALLOWED_DIRS", str(allowed_dir))
+
+    mock_get = Mock(
+        return_value=MockResponse(
+            json_data={"sub": "person-1"}, text='{"sub":"person-1"}'
+        )
+    )
+    mock_post = Mock(return_value=MockResponse())
+    mock_put = Mock(return_value=MockResponse())
+
+    monkeypatch.setattr(linkedin.requests, "get", mock_get)
+    monkeypatch.setattr(linkedin.requests, "post", mock_post)
+    monkeypatch.setattr(linkedin.requests, "put", mock_put)
+
+    result = await linkedin.call_tool(
+        "create_post",
+        {
+            "text": "hello with image",
+            "image_path": str(image_path),
+        },
+    )
+
+    assert "outside allowed directories" in result[0].text
+    mock_put.assert_not_called()

@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, cast
@@ -1695,9 +1696,8 @@ async def handle_chat_message(
                 from ..models.database import get_db as _get_db
                 from ..models.uploaded_file import UploadedFile as _UF
 
-                _db_iter = _get_db()
-                _db: _Session = next(_db_iter)
-                try:
+                with closing(_get_db()) as _db_iter:
+                    _db: _Session = next(_db_iter)
                     cutoff = datetime.now(timezone.utc) - timedelta(minutes=5)
                     pending = (
                         _db.query(_UF)
@@ -1723,8 +1723,6 @@ async def handle_chat_message(
                             f"📁 Race fallback: recovered {len(files)} "
                             f"uploaded file(s) from DB for task {task_id}"
                         )
-                finally:
-                    _db.close()
             except Exception as _e:  # noqa: BLE001
                 logger.warning(
                     f"Race fallback file lookup failed for task {task_id}: {_e}"

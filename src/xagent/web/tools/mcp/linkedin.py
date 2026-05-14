@@ -45,12 +45,41 @@ def _get_author_urn(headers: dict, proxies: dict | None) -> str:
     return f"urn:li:person:{sub}"
 
 
+def _allowed_image_dirs() -> list[Path]:
+    raw_dirs = os.environ.get("XAGENT_LINKEDIN_IMAGE_ALLOWED_DIRS", "")
+    if not raw_dirs.strip():
+        return [Path.cwd().resolve()]
+    return [
+        Path(raw_dir).expanduser().resolve()
+        for raw_dir in raw_dirs.split(",")
+        if raw_dir.strip()
+    ]
+
+
+def _resolve_allowed_image_path(image_path: str) -> Path:
+    local_path = Path(image_path).expanduser()
+    if not local_path.is_absolute():
+        local_path = Path.cwd() / local_path
+    local_path = local_path.resolve()
+
+    if not local_path.is_file():
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+
+    allowed_dirs = _allowed_image_dirs()
+    for allowed_dir in allowed_dirs:
+        if local_path == allowed_dir or local_path.is_relative_to(allowed_dir):
+            return local_path
+
+    allowed_dirs_str = ", ".join(str(path) for path in allowed_dirs)
+    raise PermissionError(
+        f"Image path {image_path} is outside allowed directories: {allowed_dirs_str}"
+    )
+
+
 def _upload_image(
     image_path: str, author_urn: str, headers: dict, proxies: dict | None
 ) -> str:
-    local_path = Path(image_path)
-    if not local_path.is_file():
-        raise FileNotFoundError(f"Image file not found: {image_path}")
+    local_path = _resolve_allowed_image_path(image_path)
 
     initialize_body = {
         "initializeUploadRequest": {

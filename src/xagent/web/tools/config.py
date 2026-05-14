@@ -8,6 +8,7 @@ and other web-specific sources.
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -186,6 +187,25 @@ class WebToolConfig(BaseToolConfig):
         self._cached_tts_model: Optional[Any] = None
         self._cached_mcp_configs: Optional[List[Dict[str, Any]]] = None
         self._cached_embedding_model: Optional[str] = None
+
+    def _build_mcp_file_allowed_dirs(self) -> str:
+        """Build comma-separated file roots that local MCP tools may read."""
+        dirs: list[str] = []
+        base_dir = Path(str(self._workspace_config.get("base_dir", get_uploads_dir())))
+        task_id = self._workspace_config.get("task_id")
+        if task_id:
+            dirs.append(str((base_dir / str(task_id)).expanduser().resolve()))
+
+        for raw_dir in self._workspace_config.get("allowed_external_dirs") or []:
+            dirs.append(str(Path(str(raw_dir)).expanduser().resolve()))
+
+        seen: set[str] = set()
+        unique_dirs = []
+        for dir_path in dirs:
+            if dir_path not in seen:
+                unique_dirs.append(dir_path)
+                seen.add(dir_path)
+        return ",".join(unique_dirs)
 
     def _get_user_id_from_request(self, request: Any) -> int:
         """Extract user ID from request using JWT authentication."""
@@ -622,6 +642,11 @@ class WebToolConfig(BaseToolConfig):
                                         "http_proxy": os.environ.get("http_proxy", ""),
                                     }
                                 )
+                                allowed_file_dirs = self._build_mcp_file_allowed_dirs()
+                                if allowed_file_dirs:
+                                    env["XAGENT_LINKEDIN_IMAGE_ALLOWED_DIRS"] = (
+                                        allowed_file_dirs
+                                    )
                                 transport_config["env"] = env  # type: ignore
                             else:
                                 config["transport"] = "stdio"
