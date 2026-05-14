@@ -1614,9 +1614,7 @@ async def handle_file_upload_for_task(
                         "type": file_type,
                         "path": str(target_path),
                         "workspace_path": (
-                            str(workspace_link_path)
-                            if workspace_link_path
-                            else None
+                            str(workspace_link_path) if workspace_link_path else None
                         ),
                     }
                 )
@@ -1705,8 +1703,7 @@ async def handle_chat_message(
                         _db.query(_UF)
                         .filter(
                             _UF.user_id == int(user.id),
-                            (_UF.task_id == int(task_id))
-                            | (_UF.task_id.is_(None)),
+                            (_UF.task_id == int(task_id)) | (_UF.task_id.is_(None)),
                             _UF.created_at >= cutoff,
                         )
                         .order_by(_UF.created_at.desc())
