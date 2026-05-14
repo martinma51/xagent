@@ -127,6 +127,9 @@ const isDuplicateResult = (content: string) => {
   return isDuplicateMessage(content, 'result')
 }
 
+const normalizeInteractions = (value: unknown): unknown[] => {
+  return Array.isArray(value) ? value : []
+}
 
 interface Message {
   id: string
@@ -136,6 +139,7 @@ interface Message {
   status?: "pending" | "running" | "completed" | "failed"
   isResult?: boolean
   isFileOutput?: boolean
+  interactions?: unknown[]
 }
 
 interface Task {
@@ -154,6 +158,8 @@ interface Task {
   smallFastModelName?: string
   visualModelName?: string
   executionMode?: "flash" | "balanced" | "think"
+  waitingQuestion?: string
+  waitingInteractions?: unknown[]
 }
 
 interface StepExecution {
@@ -276,7 +282,7 @@ type AppAction =
   | { type: "SET_TASK_ID"; payload: number | null }
   | { type: "ADD_MESSAGE"; payload: Message }
   | { type: "SET_CURRENT_TASK"; payload: Task }
-  | { type: "UPDATE_TASK_STATUS"; payload: { status: Task["status"] } }
+  | { type: "UPDATE_TASK_STATUS"; payload: { status: Task["status"]; waitingQuestion?: string; waitingInteractions?: unknown[] } }
   | { type: "SET_DAG_EXECUTION"; payload: DAGExecution | null }
   | { type: "ADD_STEP"; payload: StepExecution }
   | { type: "UPDATE_STEP"; payload: { stepId: string; updates: Partial<StepExecution> } }
@@ -362,6 +368,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, currentTask: action.payload }
 
     case "UPDATE_TASK_STATUS":
+      const isWaitingForUser = action.payload.status === "waiting_for_user"
       return state.currentTask
         ? {
           ...state,
@@ -369,6 +376,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
             ...state.currentTask,
             status: action.payload.status,
             updatedAt: new Date().toISOString(),
+            waitingQuestion: isWaitingForUser
+              ? action.payload.waitingQuestion ?? state.currentTask.waitingQuestion
+              : undefined,
+            waitingInteractions: isWaitingForUser
+              ? action.payload.waitingInteractions ?? state.currentTask.waitingInteractions
+              : undefined,
           },
         }
         : state
@@ -2942,7 +2955,35 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
 
       case "task_waiting_for_user":
         console.trace('Original message:', JSON.stringify(message), 'Handler: handleMessage (task_waiting_for_user)')
-        dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "waiting_for_user" } })
+        const waitingData = message.data as { question?: string; message?: string; interactions?: unknown[] }
+        const waitingMessage = waitingData?.question || waitingData?.message || ""
+        const interactions = normalizeInteractions(waitingData?.interactions)
+        dispatch({
+          type: "UPDATE_TASK_STATUS",
+          payload: {
+            status: "waiting_for_user",
+            waitingQuestion: waitingMessage && waitingMessage !== "Task waiting for user response" ? waitingMessage : undefined,
+            waitingInteractions: interactions.length > 0 ? interactions : undefined,
+          }
+        })
+        if (
+          waitingMessage &&
+          waitingMessage !== "Task waiting for user response" &&
+          !isDuplicateMessage(waitingMessage, 'agent-message')
+        ) {
+          dispatch({
+            type: "ADD_MESSAGE",
+            payload: {
+              id: generateMessageId("msg-agent"),
+              role: "assistant",
+              content: waitingMessage,
+              timestamp: message.timestamp,
+              status: "running",
+              isResult: true,
+              interactions: interactions.length > 0 ? interactions : undefined,
+            }
+          })
+        }
         break
 
       case "task_resumed":

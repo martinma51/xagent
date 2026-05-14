@@ -1245,9 +1245,6 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                 }
               })
             }
-            if (!expectsResponse) {
-              return
-            }
             if (isDuplicateMessage(messageContent, 'agent-message')) {
               return
             }
