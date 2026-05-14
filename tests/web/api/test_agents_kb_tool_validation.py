@@ -327,6 +327,9 @@ class TestEnhanceSystemPromptWithKb:
         assert "already selected" in result
         assert "Do not call list_knowledge_bases" in result
         assert "use knowledge_search directly" in result
+        assert "start with one targeted knowledge_search" in result
+        assert "inspect all returned results as one evidence set" in result
+        assert "Search again only when the returned results as a group" in result
 
     def test_with_kb_no_system_prompt_returns_priority_only(self):
         result = enhance_system_prompt_with_kb(None, ["kb1"])

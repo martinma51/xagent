@@ -1044,6 +1044,9 @@ class AgentServiceManager:
                         memory_similarity_threshold = agent_config[
                             "memory_similarity_threshold"
                         ]
+                    # Agent Builder agents serve end users, so v2 task memory is
+                    # disabled until the product exposes an explicit opt-in.
+                    agent_builder_memory_enabled = not bool(task and task.agent_id)
 
                     # Build allowed external directories (user's upload directory for knowledge base files)
                     allowed_external_dirs = _build_allowed_external_dirs(
@@ -1073,6 +1076,7 @@ class AgentServiceManager:
                         allowed_external_dirs=allowed_external_dirs,  # Add allowed external directories
                         task_id=str(task_id),  # Pass task_id for proper tracing
                         memory_similarity_threshold=memory_similarity_threshold,  # Set from task config
+                        memory_enabled=agent_builder_memory_enabled,
                         system_prompt=system_prompt,  # Pass agent builder instructions
                         **agent_kwargs,  # Pass Text2SQL-specific parameters
                     )
@@ -1655,6 +1659,9 @@ class AgentServiceManager:
                             memory_similarity_threshold = agent_config[
                                 "memory_similarity_threshold"
                             ]
+                        # Agent Builder agents serve end users, so v2 task memory is
+                        # disabled until the product exposes an explicit opt-in.
+                        agent_builder_memory_enabled = not bool(task and task.agent_id)
                         self._agents[task_id] = AgentService(
                             name=f"reconstructed_agent_task_{task_id}",
                             id=f"web_task_{task_id}",  # Use task ID only for workspace
@@ -1678,6 +1685,7 @@ class AgentServiceManager:
                             allowed_external_dirs=allowed_external_dirs,
                             task_id=str(task_id),
                             memory_similarity_threshold=memory_similarity_threshold,
+                            memory_enabled=agent_builder_memory_enabled,
                         )
                 else:
                     raise ValueError(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -58,6 +58,8 @@ class RecordingTracer:
 
 class FakeTool:
     def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
         class Metadata:
             name = "noop"
             description = "No-op test tool."
@@ -74,6 +76,7 @@ class FakeTool:
         return Args
 
     async def run_json_async(self, args: dict[str, Any]) -> dict[str, Any]:
+        self.calls.append(args)
         return {"args": args}
 
 
@@ -121,14 +124,30 @@ def dag_plan(steps: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @pytest.mark.asyncio
-async def test_v2_adapter_routes_single_call_to_strict_react() -> None:
-    llm = FakeLLM(["done"])
+async def test_v2_adapter_routes_single_call_to_one_tool_then_final_answer() -> None:
+    llm = FakeLLM(
+        [
+            {
+                "tool_calls": [
+                    {
+                        "id": "call-noop",
+                        "function": {
+                            "name": "noop",
+                            "arguments": '{"value":"from tool"}',
+                        },
+                    }
+                ]
+            },
+            {"content": "done", "done": True},
+        ]
+    )
+    tool = FakeTool()
     adapter = AgentV2ExecutionAdapter(
         AgentV2ExecutionConfig(
             name="single",
             pattern="single_call",
             llm=llm,
-            tools=[FakeTool()],
+            tools=[tool],
             service_id="single-service",
             skill_manager=NoSkillManager(),
         )
@@ -140,8 +159,11 @@ async def test_v2_adapter_routes_single_call_to_strict_react() -> None:
     assert result["status"] == "completed"
     assert result["output"] == "done"
     assert result["metadata"]["execution_type"] == "agent_v2_single_call"
-    assert llm.calls[0]["tools"] is None
-    assert llm.calls[0]["tool_choice"] is None
+    assert tool.calls == [{"value": "from tool"}]
+    assert llm.calls[0]["tools"][0]["function"]["name"] == "noop"
+    assert llm.calls[0]["tool_choice"] == "auto"
+    assert llm.calls[1]["tools"] is None
+    assert llm.calls[1]["tool_choice"] is None
 
 
 @pytest.mark.asyncio
@@ -251,8 +273,8 @@ async def test_agent_service_passes_conversation_history_to_v2_adapter() -> None
         name="history-service",
         id="history-service",
         pattern="react",
-        llm=llm,
-        tools=[FakeTool()],
+        llm=cast(Any, llm),
+        tools=cast(Any, [FakeTool()]),
         agent_runtime="v2",
         tool_config=None,
     )
@@ -285,8 +307,8 @@ async def test_agent_service_passes_execution_context_to_v2_adapter() -> None:
         name="execution-context-service",
         id="execution-context-service",
         pattern="react",
-        llm=llm,
-        tools=[FakeTool()],
+        llm=cast(Any, llm),
+        tools=cast(Any, [FakeTool()]),
         agent_runtime="v2",
         tool_config=None,
     )

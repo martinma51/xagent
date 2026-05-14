@@ -160,7 +160,12 @@ def enhance_system_prompt_with_kb(
         f"\n\nAvailable knowledge bases: {kb_list}. "
         "These knowledge bases are already selected. "
         "Do not call list_knowledge_bases to discover them; "
-        "use knowledge_search directly for answers."
+        "use knowledge_search directly for answers. "
+        "For specific how-to or factual questions, start with one targeted "
+        "knowledge_search, inspect all returned results as one evidence set, "
+        "and answer from that evidence when it is relevant. Search again only "
+        "when the returned results as a group are missing the information "
+        "needed to answer the current question."
     )
 
     if system_prompt:

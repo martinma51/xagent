@@ -252,7 +252,7 @@ class AgentV2ExecutionAdapter:
             )
         if self.config.pattern == "single_call":
             return (
-                V2ReActPattern(max_iterations=1, tool_choice="none"),
+                V2ReActPattern(max_iterations=2, finalize_after_tool_result=True),
                 "agent_v2_single_call",
             )
         return V2ReActPattern(), "agent_v2_react"
