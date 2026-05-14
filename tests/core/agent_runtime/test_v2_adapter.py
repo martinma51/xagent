@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -187,6 +188,65 @@ async def test_v2_adapter_routes_react_to_v2_react() -> None:
     assert result["metadata"]["execution_type"] == "agent_v2_react"
     assert result["agent_v2_result"]["pattern"] == "ReActPattern"
     assert llm.calls[0]["tools"] is not None
+
+
+@pytest.mark.asyncio
+async def test_v2_adapter_preserves_waiting_for_user_payload() -> None:
+    interactions = [
+        {
+            "type": "action_cards",
+            "field": "kb_source",
+            "label": "Choose source",
+            "options": [
+                {
+                    "label": "Upload",
+                    "value": "upload",
+                    "action_type": "upload",
+                }
+            ],
+        }
+    ]
+    llm = FakeLLM(
+        [
+            {
+                "tool_calls": [
+                    {
+                        "id": "call-ask",
+                        "function": {
+                            "name": "ask_user_question",
+                            "arguments": json.dumps(
+                                {
+                                    "message": "Need FAQ content",
+                                    "interactions": interactions,
+                                }
+                            ),
+                        },
+                    }
+                ]
+            }
+        ]
+    )
+    adapter = AgentV2ExecutionAdapter(
+        AgentV2ExecutionConfig(
+            name="react",
+            pattern="react",
+            llm=llm,
+            tools=[],
+            service_id="react-service",
+            skill_manager=NoSkillManager(),
+        )
+    )
+
+    result = await adapter.execute(task="Create an FAQ agent", task_id="react-exec")
+
+    assert result["success"] is False
+    assert result["status"] == "waiting_for_user"
+    assert result["message"] == "Need FAQ content"
+    assert result["interactions"] == interactions
+    assert result["chat_response"] == {
+        "message": "Need FAQ content",
+        "interactions": interactions,
+    }
 
 
 @pytest.mark.asyncio

@@ -3269,7 +3269,9 @@ async def handle_builder_chat(
     import uuid
 
     from ...core.agent.service import AgentService
+    from ...core.agent_v2.context.enrichment import build_skill_context
     from ...core.memory.in_memory import InMemoryMemoryStore
+    from ...skills.utils import create_skill_manager
     from ..models.database import get_db
     from ..services.llm_utils import UserAwareModelStorage
 
@@ -3343,37 +3345,21 @@ async def handle_builder_chat(
             "execution_mode": message_data.get("executionMode", "balanced"),
         }
 
-        # Build system prompt with context
-        system_prompt = f"""You are an expert AI Agent Builder Assistant.
-Your job is to help users create and configure custom AI agents.
+        skill_manager = create_skill_manager()
+        agent_builder_skill = await skill_manager.get_skill("agent-builder")
+        agent_builder_skill_context = (
+            build_skill_context(agent_builder_skill) if agent_builder_skill else None
+        )
+
+        # Build system prompt with runtime state only. The behavioral workflow comes
+        # from the forced agent-builder skill context below.
+        system_prompt = f"""You are the runtime wrapper for the Xagent builder chat.
+Follow the selected `agent-builder` skill as the authoritative workflow.
 
 Current Agent Configuration:
 {current_config}
 
-When the user describes what they want to build, use the create_agent or update_agent tool to help them.
-The agent will be updated immediately and can be used right away.
-
-Important instructions:
-1. Always create/update agents with clear, descriptive names and detailed descriptions
-2. The description should explain WHEN to use this agent (e.g., "Use this agent for data analysis tasks involving CSV files")
-3. Include appropriate tool_categories and skills based on the user's requirements
-4. After creating or updating an agent, present it to the user in a clear format with the markdown link
-5. When updating an agent, if you need to modify tools, skills, or knowledge bases, you MUST provide the FULL updated list in your tool call (combining the existing ones from Current Agent Configuration with any new ones the user requested). If you do not include the existing ones, they will be removed!
-6. If the user asks to build an agent that requires a knowledge base (e.g., answering questions from a specific website, document, FAQ, or company domain), ALWAYS check if a relevant knowledge base exists using `list_knowledge_bases` BEFORE deciding whether to create a new one.
-   - If the agent is meant to be an FAQ bot, customer service bot, or answer specific organizational questions, it ABSOLUTELY REQUIRES a knowledge base. Do NOT assume it can answer from general knowledge.
-   - If the user HAS provided a URL: Do NOT ask the user again, but you STILL MUST call `list_knowledge_bases` first to see whether a relevant knowledge base already exists for that website/domain.
-   - Only if no relevant knowledge base exists after checking `list_knowledge_bases`, you MUST use the `create_knowledge_base_from_url` tool to import the website, and then proceed to create or update the agent with the appropriate knowledge base.
-   - If `list_knowledge_bases` does not return the exact requested knowledge base and the user has not provided a URL or file: It is INVALID to call `create_agent` or `update_agent` with that missing knowledge base. You MUST STOP and ask the user for clarification using the `ask_user_question` tool to request them to upload a file, provide a URL, or pick an existing knowledge base. Use the "action_cards" interaction type ONLY for high-level actions like "Import Website" and "Upload File". If you know the user's intended website URL but it hasn't been crawled yet, you MUST pass that URL into the "default_value" field of the interaction. For selecting from a list of existing items (like existing knowledge bases), you MUST use the "select_one" interaction type instead. When using "action_cards" for knowledge base, provide two options: one with `action_type="input_url"` and another with `action_type="upload"`.
-     CRITICAL INSTRUCTION: Call the native `ask_user_question` tool directly with a concise message and structured interactions. Do not write the question as plain assistant text.
-   - If `create_agent` or `update_agent` reports that a knowledge base was not found, your next action MUST be `ask_user_question`. Do not answer in plain text.
-   - Do NOT proceed to create or update the agent until the knowledge base is ready.
-
-File upload handling:
-- When the user uploads files, their file_ids will be provided in the message context under "uploaded_file_ids".
-- If file_ids are present, you MUST IMMEDIATELY call `create_knowledge_base_from_file` with those file_ids to create the knowledge base.
-- Do NOT ask the user to upload again if file_ids are already provided.
-
-You have access to the following tools:
+Builder chat tools available in this runtime:
 - create_agent: Create a new agent with specific capabilities
 - update_agent: Update an existing agent with specific capabilities
 - list_available_skills: Query the list of skills you can assign to an agent
@@ -3383,11 +3369,32 @@ You have access to the following tools:
 - create_knowledge_base_from_url: Create a knowledge base by crawling a given website URL (use this automatically if the user provided a URL)
 - create_knowledge_base_from_file: Create a knowledge base from already-uploaded files using their file_ids (use this when the user has uploaded files)
 
-Use the create_agent tool whenever the user wants to build a new agent and there is no agent ID in the current configuration.
-CRITICAL: Always use the user's ORIGINAL requirements (name, role, instructions, etc.) from earlier in the conversation. Do NOT generate generic names like "FAQ Bot" or "Data Q&A Agent"!
-Use the update_agent tool whenever the user wants to modify their current agent configuration and an agent ID is available in the current configuration.
-If the user wants to add skills, tool categories, or knowledge bases but you are unsure which ones exist, use the list_* tools to find out before calling create_agent or update_agent.
+Use native `ask_user_question` for structured user input. Do not ask required
+clarification questions as plain assistant text.
 """
+
+        async def send_builder_outbound_message(payload: Dict[str, Any]) -> None:
+            """Bridge agent_v2 agent-to-user messages to the builder chat socket."""
+            await websocket.send_text(
+                json.dumps(
+                    create_stream_event(
+                        "agent_message",
+                        builder_task_id,
+                        {
+                            "event_id": payload.get("event_id"),
+                            "step_id": payload.get("step_id"),
+                            "execution_id": payload.get("execution_id"),
+                            "message": payload.get("message"),
+                            "message_type": payload.get("message_type", "info"),
+                            "expect_response": bool(
+                                payload.get("expect_response", False)
+                            ),
+                            "metadata": payload.get("metadata") or {},
+                            "agent_runtime": "v2",
+                        },
+                    )
+                )
+            )
 
         # Get LLM configuration
         model_name = current_config.get("model")
@@ -3501,17 +3508,21 @@ If the user wants to add skills, tool categories, or knowledge bases but you are
                 tracer=builder_tracer,  # Using common websocket tracer
             )
 
-            # Save agent service to websocket state for reuse
-            # Builder chat has a fixed product workflow, so it should not perform
-            # generic skill auto-selection such as selecting the agent-builder skill.
-            agent_service.set_allowed_skills([])
+            # Save agent service to websocket state for reuse. Builder chat has a
+            # fixed product workflow: force the agent-builder skill and do not
+            # allow generic skill auto-selection to choose anything else.
+            agent_service.set_allowed_skills(["agent-builder"])
+            agent_service.set_recovered_skill_context(agent_builder_skill_context)
+            agent_service.set_outbound_message_handler(send_builder_outbound_message)
             websocket.state.builder_agent_service = agent_service
             logger.info(
                 f"Created new builder chat agent service with task_id: {builder_task_id}"
             )
         else:
             agent_service = websocket.state.builder_agent_service
-            agent_service.set_allowed_skills([])
+            agent_service.set_allowed_skills(["agent-builder"])
+            agent_service.set_recovered_skill_context(agent_builder_skill_context)
+            agent_service.set_outbound_message_handler(send_builder_outbound_message)
             # Update tracer to the new connection
             agent_service.tracer = builder_tracer
             # Defensive initialization for service reuse

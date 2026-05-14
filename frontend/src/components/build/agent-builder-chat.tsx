@@ -279,6 +279,25 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
                     return updated
                   })
                 }
+              } else if (data.event_type === "agent_message") {
+                const displayReply = data.data?.message || ""
+                const interactions = data.data?.metadata?.interactions
+                if (data.data?.expect_response) {
+                  setIsLoading(false)
+                }
+                setMessages(prev => {
+                  const updated = [...prev]
+                  const lastMsg = updated[updated.length - 1]
+                  if (!lastMsg || lastMsg.role !== 'assistant') {
+                    return updated
+                  }
+                  updated[updated.length - 1] = {
+                    ...lastMsg,
+                    content: displayReply,
+                    interactions: Array.isArray(interactions) ? interactions : lastMsg.interactions
+                  }
+                  return updated
+                })
               } else if (data.event_type === "tool_execution_start") {
                 // Update state to indicate tool is running if needed
                 console.log("Tool execution started:", data.data)

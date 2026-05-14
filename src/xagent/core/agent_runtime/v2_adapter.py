@@ -286,7 +286,7 @@ class AgentV2ExecutionAdapter:
             "status",
             "completed" if result.get("success") else "failed",
         )
-        return {
+        normalized = {
             "status": status,
             "output": output or "No output provided",
             "success": result.get("success", False),
@@ -300,6 +300,23 @@ class AgentV2ExecutionAdapter:
             },
             "agent_v2_result": result,
         }
+        if status == "waiting_for_user":
+            message = str(result.get("message") or output or "")
+            interactions = result.get("interactions")
+            normalized.update(
+                {
+                    "message": message,
+                    "message_type": result.get("message_type", "question"),
+                    "interactions": interactions,
+                    "chat_response": {
+                        "message": message,
+                        "interactions": interactions
+                        if isinstance(interactions, list)
+                        else [],
+                    },
+                }
+            )
+        return normalized
 
     def _latest_assistant_message(self, context: Any) -> str | None:
         messages = getattr(context, "messages", None)

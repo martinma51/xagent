@@ -105,13 +105,18 @@ async def test_handle_builder_chat_basic() -> None:
 
         # Assert
         # Verify AgentService was created with v2 ReAct so builder chat can use
-        # native ask_user_question/send_message control tools.
+        # native ask_user_question/send_message control tools without Auto's
+        # extra pattern-selection tool calls.
         assert MockAgentService.called
         call_kwargs = MockAgentService.call_args[1]
         assert call_kwargs["pattern"] == "react"
         assert call_kwargs["agent_runtime"] == "v2"
         assert call_kwargs["name"] == "builder_chat_agent"
-        mock_agent_service.set_allowed_skills.assert_called_once_with([])
+        mock_agent_service.set_allowed_skills.assert_called_once_with(["agent-builder"])
+        mock_agent_service.set_recovered_skill_context.assert_called_once()
+        mock_agent_service.set_outbound_message_handler.assert_called_once()
+        skill_context = mock_agent_service.set_recovered_skill_context.call_args.args[0]
+        assert "## Available Skill: agent-builder" in skill_context
 
         # Verify CreateAgentTool was created (direct tool creation, not via WebToolConfig)
         assert MockCreateAgentTool.called
@@ -208,7 +213,9 @@ async def test_handle_builder_chat_waiting_for_user_sends_chat_response() -> Non
     chat_response = task_completed["result"]["chat_response"]
     assert chat_response["message"] == "Choose a method to provide FAQ content:"
     assert chat_response["interactions"][0]["type"] == "action_cards"
-    mock_agent_service.set_allowed_skills.assert_called_once_with([])
+    mock_agent_service.set_allowed_skills.assert_called_once_with(["agent-builder"])
+    mock_agent_service.set_recovered_skill_context.assert_called_once()
+    mock_agent_service.set_outbound_message_handler.assert_called_once()
 
 
 @pytest.mark.asyncio
