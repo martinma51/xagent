@@ -332,7 +332,10 @@ class TaskWorkspace:
         if not cwd_candidate.exists():
             return None
 
-        return self._resolve_allowed_absolute_path(cwd_candidate)
+        try:
+            return self._resolve_allowed_absolute_path(cwd_candidate)
+        except ValueError:
+            return None
 
     def resolve_path(self, file_path: str, default_dir: str = "output") -> Path:
         """

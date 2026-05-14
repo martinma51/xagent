@@ -117,6 +117,16 @@ class TestWorkspaceExternalDirs(unittest.TestCase):
 
         self.assertEqual(resolved, user_file.resolve())
 
+    def test_disallowed_cwd_relative_candidate_falls_back_to_workspace(self):
+        """Disallowed CWD files should not block normal workspace-relative paths."""
+        cwd_file = Path(self.temp_dir) / "README.md"
+        cwd_file.write_text("CWD README")
+
+        with changed_cwd(Path(self.temp_dir)):
+            resolved = self.workspace.resolve_path("README.md")
+
+        self.assertEqual(resolved, (self.workspace.output_dir / "README.md").resolve())
+
     def test_workspace_rejects_other_user_file_inside_base_dir(self):
         """Test uploads root access does not bypass the explicit whitelist"""
         uploads_dir = Path(self.temp_dir) / "uploads"

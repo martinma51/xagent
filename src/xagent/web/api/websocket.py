@@ -1696,8 +1696,7 @@ async def handle_chat_message(
                         _db.query(UploadedFile)
                         .filter(
                             UploadedFile.user_id == int(user.id),
-                            (UploadedFile.task_id == int(task_id))
-                            | (UploadedFile.task_id.is_(None)),
+                            UploadedFile.task_id == int(task_id),
                             UploadedFile.created_at >= cutoff,
                         )
                         .order_by(UploadedFile.created_at.desc())
