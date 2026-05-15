@@ -304,44 +304,47 @@ export function AgentBuilderChat({ agentConfig, onUpdateConfig, availableOptions
               } else if (data.event_type === "tool_execution_end") {
                 // Tool finished
                 console.log("Tool execution ended:", data.data)
-                if (data.data && (data.data.tool_name === "create_agent" || data.data.tool_name === "update_agent") && data.data.tool_args && typeof data.data.tool_args === 'object') {
-                  // Extract configuration updates from tool_args and agent_id from result
-                  const toolArgs = data.data.tool_args;
-                  const result = data.data.result || {};
+                if (data.data && (data.data.tool_name === "create_agent" || data.data.tool_name === "update_agent")) {
+                  // Extract configuration updates from tool_args/tool_params and agent_id from result
+                  const toolArgs = data.data.tool_args || data.data.tool_params;
 
-                  if (result.status === "success") {
-                    const configUpdates: Partial<AgentConfig> = {};
-                    if (toolArgs.name) configUpdates.name = toolArgs.name;
-                    if (toolArgs.description) configUpdates.description = toolArgs.description;
-                    if (toolArgs.instructions) configUpdates.instructions = toolArgs.instructions;
-                    if (toolArgs.knowledge_bases) {
-                      const kbs = Array.isArray(toolArgs.knowledge_bases) ? toolArgs.knowledge_bases : [toolArgs.knowledge_bases];
-                      configUpdates.selectedKbs = kbs.map((kb: any) => typeof kb === 'string' ? kb : kb.name || kb.value).filter(Boolean);
-                    }
-                    if (toolArgs.skills) {
-                      const skills = Array.isArray(toolArgs.skills) ? toolArgs.skills : [toolArgs.skills];
-                      configUpdates.selectedSkills = skills.map((skill: any) => typeof skill === 'string' ? skill : skill.name || skill.value).filter(Boolean);
-                    }
-                    if (toolArgs.tool_categories) {
-                      const tcs = Array.isArray(toolArgs.tool_categories) ? toolArgs.tool_categories : [toolArgs.tool_categories];
-                      configUpdates.selectedToolCategories = tcs.map((tc: any) => typeof tc === 'string' ? tc : tc.name || tc.category || tc.value).filter(Boolean);
-                    }
-                    if (toolArgs.suggested_prompts) {
-                      const sp = Array.isArray(toolArgs.suggested_prompts) ? toolArgs.suggested_prompts : [toolArgs.suggested_prompts];
-                      configUpdates.suggestedPrompts = sp.map((p: any) => typeof p === 'string' ? p : p.value || p.prompt).filter(Boolean);
-                    }
-                    if (result.agent_id) {
-                      configUpdates.id = result.agent_id;
-                    }
-                    if (Object.keys(configUpdates).length > 0) {
-                      onUpdateConfig(configUpdates);
-                    }
+                  if (toolArgs && typeof toolArgs === 'object') {
+                    const result = data.data.result || {};
 
-                    // Update URL if agent was created
-                    if (result.agent_id) {
-                      const currentUrl = window.location.pathname;
-                      if (currentUrl === '/build/new' || currentUrl === '/build') {
-                        window.history.pushState({}, '', `/build/${result.agent_id}`);
+                    if (result.status === "success") {
+                      const configUpdates: Partial<AgentConfig> = {};
+                      if (toolArgs.name) configUpdates.name = toolArgs.name;
+                      if (toolArgs.description) configUpdates.description = toolArgs.description;
+                      if (toolArgs.instructions) configUpdates.instructions = toolArgs.instructions;
+                      if (toolArgs.knowledge_bases) {
+                        const kbs = Array.isArray(toolArgs.knowledge_bases) ? toolArgs.knowledge_bases : [toolArgs.knowledge_bases];
+                        configUpdates.selectedKbs = kbs.map((kb: any) => typeof kb === 'string' ? kb : kb.name || kb.value).filter(Boolean);
+                      }
+                      if (toolArgs.skills) {
+                        const skills = Array.isArray(toolArgs.skills) ? toolArgs.skills : [toolArgs.skills];
+                        configUpdates.selectedSkills = skills.map((skill: any) => typeof skill === 'string' ? skill : skill.name || skill.value).filter(Boolean);
+                      }
+                      if (toolArgs.tool_categories) {
+                        const tcs = Array.isArray(toolArgs.tool_categories) ? toolArgs.tool_categories : [toolArgs.tool_categories];
+                        configUpdates.selectedToolCategories = tcs.map((tc: any) => typeof tc === 'string' ? tc : tc.name || tc.category || tc.value).filter(Boolean);
+                      }
+                      if (toolArgs.suggested_prompts) {
+                        const sp = Array.isArray(toolArgs.suggested_prompts) ? toolArgs.suggested_prompts : [toolArgs.suggested_prompts];
+                        configUpdates.suggestedPrompts = sp.map((p: any) => typeof p === 'string' ? p : p.value || p.prompt).filter(Boolean);
+                      }
+                      if (result.agent_id) {
+                        configUpdates.id = result.agent_id;
+                      }
+                      if (Object.keys(configUpdates).length > 0) {
+                        onUpdateConfig(configUpdates);
+                      }
+
+                      // Update URL if agent was created
+                      if (result.agent_id) {
+                        const currentUrl = window.location.pathname;
+                        if (currentUrl === '/build/new' || currentUrl === '/build') {
+                          window.history.replaceState(null, '', `/build/${result.agent_id}`);
+                        }
                       }
                     }
                   }
