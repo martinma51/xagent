@@ -17,7 +17,7 @@ from xagent.core.agent import (
     PatternRuntime,
     ReActPattern,
 )
-from xagent.core.agent.pattern.auto.auto import DECISION_TOOL_NAME
+from xagent.core.agent.pattern.auto.auto import DECISION_TOOL_NAME, _AutoChildRuntime
 
 
 class FakeWorkspace:
@@ -134,6 +134,22 @@ class CapturingChildPattern:
         return {"captured": True}
 
 
+def test_auto_child_runtime_forwards_clear_interrupt() -> None:
+    parent_runtime = PatternRuntime()
+    parent_runtime.request_interrupt("resume with user guidance")
+
+    child_runtime = _AutoChildRuntime(
+        parent=parent_runtime,
+        auto_pattern=AutoPattern(),
+        root_context=ExecutionContext(execution_id="auto-clear-interrupt"),
+    )
+
+    child_runtime.clear_interrupt()
+
+    assert parent_runtime._interrupt_requested is False
+    assert parent_runtime.interrupt_reason is None
+
+
 def decision_tool_response(
     action: str,
     reason: str,
@@ -182,6 +198,43 @@ def malformed_empty_missing_verification_decision_tool_response() -> dict[str, A
                         '"evidence_basis":"current conversation",'
                         '"missing_verification":}'
                     ),
+                },
+            }
+        ]
+    }
+
+
+def truncated_final_answer_decision_tool_response() -> dict[str, Any]:
+    return {
+        "tool_calls": [
+            {
+                "id": f"call_{DECISION_TOOL_NAME}",
+                "type": "function",
+                "function": {
+                    "name": DECISION_TOOL_NAME,
+                    "arguments": (
+                        '{"action":"final_answer","reason":"simple reply",'
+                        '"requires_current_or_external_facts":false,'
+                        '"existing_context_sufficient":true,'
+                        '"evidence_basis":"current conversation",'
+                        '"missing_verification":"",'
+                        '"answer":"Recovered answer'
+                    ),
+                },
+            }
+        ]
+    }
+
+
+def unrepairable_decision_tool_response() -> dict[str, Any]:
+    return {
+        "tool_calls": [
+            {
+                "id": f"call_{DECISION_TOOL_NAME}",
+                "type": "function",
+                "function": {
+                    "name": DECISION_TOOL_NAME,
+                    "arguments": "not json at all",
                 },
             }
         ]
@@ -647,6 +700,76 @@ async def test_auto_pattern_repairs_empty_missing_verification_argument() -> Non
     assert result["success"] is True
     assert result["auto_decision"]["action"] == "plan_execute"
     assert result["auto_decision"]["missing_verification"] == ""
+
+
+@pytest.mark.asyncio
+async def test_auto_pattern_retries_truncated_final_answer_arguments() -> None:
+    llm = FakeLLM(
+        [
+            truncated_final_answer_decision_tool_response(),
+            decision_tool_response(
+                "final_answer",
+                "Retry produced the full answer.",
+                answer="Complete answer after retry.",
+            ),
+        ]
+    )
+    pattern = AutoPattern()
+    context = ExecutionContext()
+    context.add_user_message("Continue")
+    runtime = RecordingRuntime()
+
+    result = await pattern.run(context=context, tools=[], llm=llm, runtime=runtime)
+
+    assert result["success"] is True
+    assert result["output"] == "Complete answer after retry."
+    assert result["auto_decision"]["action"] == "final_answer"
+    assert len(llm.calls) == 2
+    retry_messages = llm.calls[1]["messages"]
+    assert "truncated" in retry_messages[-1]["content"]
+    assert "Recovered answer" in retry_messages[-1]["content"]
+    assert any(
+        checkpoint["label"] == "auto_decision_retry"
+        for checkpoint in runtime.checkpoints
+    )
+
+
+@pytest.mark.asyncio
+async def test_auto_pattern_retries_unrepairable_decision_arguments() -> None:
+    llm = FakeLLM(
+        [
+            unrepairable_decision_tool_response(),
+            decision_tool_response(
+                "final_answer",
+                "Retry produced valid arguments.",
+                answer="after retry",
+            ),
+        ]
+    )
+    pattern = AutoPattern()
+    context = ExecutionContext()
+    context.add_user_message("Continue")
+    runtime = RecordingRuntime()
+
+    result = await pattern.run(context=context, tools=[], llm=llm, runtime=runtime)
+
+    assert result["success"] is True
+    assert result["output"] == "after retry"
+    assert len(llm.calls) == 2
+    retry_messages = llm.calls[1]["messages"]
+    assert "invalid JSON" in retry_messages[-1]["content"]
+    assert "not json at all" in retry_messages[-1]["content"]
+    llm_start_metadata = [
+        hook[1]["metadata"] for hook in runtime.hooks if hook[0] == "llm_start"
+    ]
+    assert llm_start_metadata == [
+        {"phase": "auto_decision"},
+        {"phase": "auto_decision", "attempt": 2},
+    ]
+    assert any(
+        checkpoint["label"] == "auto_decision_retry"
+        for checkpoint in runtime.checkpoints
+    )
 
 
 @pytest.mark.asyncio

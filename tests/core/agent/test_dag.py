@@ -84,6 +84,38 @@ class FakeTool:
         return {"result": eval(args["expression"])}  # noqa: S307
 
 
+class FakeWriteFileTool:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.metadata = type(
+            "Metadata",
+            (),
+            {
+                "name": "write_file",
+                "description": "Write file content in the workspace.",
+            },
+        )()
+
+    def args_type(self) -> type:
+        class Args:
+            @staticmethod
+            def model_json_schema() -> dict[str, Any]:
+                return {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["file_path", "content"],
+                }
+
+        return Args
+
+    async def run_json_async(self, args: dict[str, Any]) -> Any:
+        self.calls.append(args)
+        return {"success": True, "file_path": args["file_path"]}
+
+
 class SequenceLLM:
     def __init__(self, responses: list[dict[str, Any]]) -> None:
         self.responses = responses
@@ -219,6 +251,33 @@ async def run_invalid_plan(plan: ExecutionPlan) -> dict[str, Any]:
         tools=[],
         llm=SequenceLLM([]),
     )
+
+
+def test_plan_step_serializes_termination_condition() -> None:
+    step = PlanStep(
+        id="write_html",
+        task="Write HTML",
+        dependencies=["extract"],
+        description="Create the poster HTML file.",
+        termination_condition=(
+            "Stop after output/poster.html has been successfully written once."
+        ),
+        completion_evidence=(
+            "The writer returned success=true for the requested output path."
+        ),
+        tool_names=["write_file"],
+    )
+
+    restored = PlanStep.from_dict(step.to_dict())
+
+    assert restored.termination_condition == (
+        "Stop after output/poster.html has been successfully written once."
+    )
+    assert restored.to_dict()["termination_condition"] == restored.termination_condition
+    assert restored.completion_evidence == (
+        "The writer returned success=true for the requested output path."
+    )
+    assert restored.to_dict()["completion_evidence"] == restored.completion_evidence
 
 
 @pytest.mark.asyncio
@@ -418,6 +477,9 @@ async def test_dag_step_appends_current_step_boundary_after_parent_context() -> 
             id="extract",
             task="Extract release highlights",
             description="Extract version, date, features, bug fixes, and contributors.",
+            termination_condition=(
+                "Stop after the release highlights have been extracted and reported."
+            ),
         )
     )
     pattern = DAGPattern(lambda **_: plan)
@@ -437,6 +499,12 @@ async def test_dag_step_appends_current_step_boundary_after_parent_context() -> 
     assert "DAG STEP EXECUTION BOUNDARY" in messages[-1]["content"]
     assert "Current DAG step id: extract" in messages[-1]["content"]
     assert "CURRENT STEP - ONLY EXECUTABLE GOAL" in messages[-1]["content"]
+    assert "TERMINATION CONDITION - AUTHORITATIVE STOP RULE" in messages[-1]["content"]
+    assert (
+        "Stop after the release highlights have been extracted and reported."
+        in messages[-1]["content"]
+    )
+    assert "your next action must be final_answer" in messages[-1]["content"]
     assert "Execute only the current DAG step" in messages[-1]["content"]
     assert (
         "Do not infer extra work from the overall user goal" in messages[-1]["content"]
@@ -580,6 +648,283 @@ async def test_dag_pattern_executes_independent_ready_steps_concurrently() -> No
         "step_4": "Task 4 done",
         "step_5": "Task 5 done",
     }
+
+
+@pytest.mark.asyncio
+async def test_dag_pattern_names_concurrent_step_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_task_names: list[str | None] = []
+    real_create_task = asyncio.create_task
+
+    def record_create_task(coro: Any, *, name: str | None = None) -> asyncio.Task[Any]:
+        created_task_names.append(name)
+        return real_create_task(coro, name=name)
+
+    monkeypatch.setattr(asyncio, "create_task", record_create_task)
+
+    pattern = DAGPattern(
+        lambda **_: build_plan(
+            PlanStep(id="first", task="First task"),
+            PlanStep(id="second", task="Second task", dependencies=["first"]),
+            PlanStep(id="slow", task="Slow task"),
+        ),
+        max_concurrency=2,
+    )
+
+    result = await pattern.run(
+        context=ExecutionContext(execution_id="dag-task-names"),
+        tools=[],
+        llm=SequenceLLM(
+            [
+                "first done",
+                "slow done",
+                "second done",
+            ]
+        ),
+    )
+
+    assert result["success"] is True
+    assert "dag_step_first" in created_task_names
+    assert "dag_step_slow" in created_task_names
+    assert "dag_step_second" in created_task_names
+
+
+@pytest.mark.asyncio
+async def test_dag_pattern_schedules_newly_ready_step_before_sibling_finishes() -> None:
+    class PartialBlockingLLM:
+        def __init__(self) -> None:
+            self.release_slow = asyncio.Event()
+            self.started_by_task: dict[str, asyncio.Event] = {}
+
+        async def chat(self, **kwargs: Any) -> dict[str, Any]:
+            messages = list(kwargs.get("messages", []))
+            task = current_step_task(messages)
+            self.started_by_task.setdefault(task, asyncio.Event()).set()
+            if task == "Create English HTML":
+                await self.release_slow.wait()
+            return {"content": f"{task} done", "done": True}
+
+        async def wait_started(self, task: str) -> None:
+            await asyncio.wait_for(
+                self.started_by_task.setdefault(task, asyncio.Event()).wait(),
+                timeout=1,
+            )
+
+    llm = PartialBlockingLLM()
+    pattern = DAGPattern(
+        lambda **_: build_plan(
+            PlanStep(id="zh", task="Create Chinese HTML"),
+            PlanStep(id="en", task="Create English HTML"),
+            PlanStep(id="render_zh", task="Render Chinese poster", dependencies=["zh"]),
+            PlanStep(id="render_en", task="Render English poster", dependencies=["en"]),
+        ),
+        max_concurrency=2,
+    )
+
+    run_task = asyncio.create_task(
+        pattern.run(
+            context=ExecutionContext(execution_id="dag-dynamic-ready"),
+            tools=[],
+            llm=llm,
+        )
+    )
+
+    await llm.wait_started("Create English HTML")
+    await llm.wait_started("Render Chinese poster")
+    assert "Render English poster" not in llm.started_by_task
+
+    llm.release_slow.set()
+    result = await asyncio.wait_for(run_task, timeout=1)
+
+    assert result["success"] is True
+    assert result["step_results"] == {
+        "zh": "Create Chinese HTML done",
+        "en": "Create English HTML done",
+        "render_zh": "Render Chinese poster done",
+        "render_en": "Render English poster done",
+    }
+
+
+@pytest.mark.asyncio
+async def test_dag_pattern_catches_dynamically_scheduled_step_failure() -> None:
+    class DynamicFailureLLM:
+        def __init__(self) -> None:
+            self.started_by_task: dict[str, asyncio.Event] = {}
+            self.cancelled_tasks: list[str] = []
+
+        async def chat(self, **kwargs: Any) -> dict[str, Any]:
+            messages = list(kwargs.get("messages", []))
+            task = current_step_task(messages)
+            self.started_by_task.setdefault(task, asyncio.Event()).set()
+            if task == "Create English HTML":
+                try:
+                    await asyncio.Future()
+                except asyncio.CancelledError:
+                    self.cancelled_tasks.append(task)
+                    raise
+            if task == "Render Chinese poster":
+                await self.wait_started("Create English HTML")
+                raise RuntimeError("render failed")
+            return {"content": f"{task} done", "done": True}
+
+        async def wait_started(self, task: str) -> None:
+            await asyncio.wait_for(
+                self.started_by_task.setdefault(task, asyncio.Event()).wait(),
+                timeout=1,
+            )
+
+    llm = DynamicFailureLLM()
+    pattern = DAGPattern(
+        lambda **_: build_plan(
+            PlanStep(id="zh", task="Create Chinese HTML"),
+            PlanStep(id="en", task="Create English HTML"),
+            PlanStep(id="render_zh", task="Render Chinese poster", dependencies=["zh"]),
+            PlanStep(id="render_en", task="Render English poster", dependencies=["en"]),
+        ),
+        max_concurrency=2,
+    )
+
+    result = await asyncio.wait_for(
+        pattern.run(
+            context=ExecutionContext(execution_id="dag-dynamic-failure"),
+            tools=[],
+            llm=llm,
+        ),
+        timeout=1,
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert result["failure_reason"] == "step_failed"
+    assert result["failed_step_id"] == "render_zh"
+    assert "Create English HTML" in llm.cancelled_tasks
+
+
+@pytest.mark.asyncio
+async def test_dag_pattern_single_step_failure_stops_independent_steps() -> None:
+    class FailThenRecordLLM:
+        def __init__(self) -> None:
+            self.tasks: list[str] = []
+
+        async def chat(self, **kwargs: Any) -> dict[str, Any]:
+            messages = list(kwargs.get("messages", []))
+            task = current_step_task(messages)
+            self.tasks.append(task)
+            if task == "Fail task":
+                return {"content": "not done", "done": False}
+            return {"content": f"{task} done", "done": True}
+
+    llm = FailThenRecordLLM()
+    runtime = PatternRuntime(execution_id="dag-single-failure")
+    pattern = DAGPattern(
+        lambda **_: build_plan(
+            PlanStep(id="fail", task="Fail task"),
+            PlanStep(id="next", task="Should not run"),
+        ),
+        max_concurrency=1,
+        react_max_iterations=1,
+    )
+
+    result = await pattern.run(
+        context=ExecutionContext(execution_id="dag-single-failure"),
+        tools=[],
+        llm=llm,
+        runtime=runtime,
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert result["failure_reason"] == "step_failed"
+    assert result["failed_step_id"] == "fail"
+    assert llm.tasks == ["Fail task"]
+    assert runtime.last_checkpoint is not None
+    assert runtime.last_checkpoint["label"] == "dag_failed"
+
+
+@pytest.mark.asyncio
+async def test_dag_completion_evidence_keeps_tools_for_multi_call_step() -> None:
+    class MultiWriteLLM:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        async def chat(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(kwargs)
+            tools = kwargs.get("tools") or []
+            tool_names = {
+                schema.get("function", {}).get("name")
+                for schema in tools
+                if isinstance(schema, dict)
+            }
+            if len(self.calls) == 1:
+                assert "write_file" in tool_names
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "write-index",
+                            "function": {
+                                "name": "write_file",
+                                "arguments": json.dumps(
+                                    {
+                                        "file_path": "index.html",
+                                        "content": "<html></html>",
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                    "done": False,
+                }
+            if len(self.calls) == 2:
+                assert "write_file" in tool_names
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "write-style",
+                            "function": {
+                                "name": "write_file",
+                                "arguments": json.dumps(
+                                    {
+                                        "file_path": "style.css",
+                                        "content": "body { color: black; }",
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                    "done": False,
+                }
+            return {"content": "Both files were written.", "done": True}
+
+    llm = MultiWriteLLM()
+    tool = FakeWriteFileTool()
+    pattern = DAGPattern(
+        lambda **_: build_plan(
+            PlanStep(
+                id="write_files",
+                task="Write landing page files",
+                termination_condition=(
+                    "Stop after both index.html and style.css have been written."
+                ),
+                completion_evidence="Both file writes returned success=true.",
+                tool_names=["write_file"],
+            )
+        ),
+        react_max_iterations=4,
+    )
+
+    result = await pattern.run(
+        context=ExecutionContext(execution_id="dag-multi-write"),
+        tools=[tool],
+        llm=llm,
+    )
+
+    assert result["success"] is True
+    assert result["step_results"]["write_files"] == "Both files were written."
+    assert [call["file_path"] for call in tool.calls] == ["index.html", "style.css"]
+    assert len(llm.calls) == 3
 
 
 @pytest.mark.parametrize("max_concurrency", [0, -1])
@@ -760,11 +1105,24 @@ async def test_llm_plan_generator_builds_plan_from_model_json() -> None:
     llm = PlanLLM(
         plan_tool_response(
             [
-                {"id": "draft", "task": "Draft answer"},
+                {
+                    "id": "draft",
+                    "task": "Draft answer",
+                    "dependencies": [],
+                    "termination_condition": "Stop after the draft is written.",
+                    "completion_evidence": "The draft has been returned in final_answer.",
+                    "tool_names": [],
+                },
                 {
                     "id": "final",
                     "task": "Finalize answer",
                     "description": "Write the final answer from the draft.",
+                    "termination_condition": (
+                        "Stop after the final answer has been written once."
+                    ),
+                    "completion_evidence": (
+                        "The final answer has been returned successfully."
+                    ),
                     "tool_names": ["calculator"],
                     "dependencies": ["draft"],
                 },
@@ -784,23 +1142,34 @@ async def test_llm_plan_generator_builds_plan_from_model_json() -> None:
     assert [step.id for step in plan.steps] == ["draft", "final"]
     assert plan.steps[1].dependencies == ["draft"]
     assert plan.steps[1].description == "Write the final answer from the draft."
+    assert (
+        plan.steps[1].termination_condition
+        == "Stop after the final answer has been written once."
+    )
     assert plan.steps[1].tool_names == ["calculator"]
     assert llm.calls[0]["tools"][0]["function"]["name"] == "generate_execution_plan"
     step_schema = llm.calls[0]["tools"][0]["function"]["parameters"]["properties"][
         "steps"
     ]["items"]["properties"]
     assert "description" in step_schema
+    assert "termination_condition" in step_schema
+    assert "completion_evidence" in step_schema
     assert "tool_names" in step_schema
     assert "dependencies" in step_schema
     step_required = llm.calls[0]["tools"][0]["function"]["parameters"]["properties"][
         "steps"
     ]["items"]["required"]
     assert "dependencies" in step_required
+    assert "termination_condition" in step_required
+    assert "completion_evidence" in step_required
     assert "tool_names" in step_required
     system_prompt = llm.calls[0]["messages"][0]["content"]
     assert "dependencies is required for every step" in system_prompt
     assert "screenshot or render steps must depend" in system_prompt
-    assert 'tool_names"; "description" is optional' in system_prompt
+    assert '"termination_condition"' in system_prompt
+    assert '"completion_evidence"' in system_prompt
+    assert "Few-shot examples" in system_prompt
+    assert "must be concrete and action-specific" in system_prompt
     assert "suggested execution tool scope" in system_prompt
     assert llm.calls[0]["tool_choice"] == "required"
     assert llm.calls[0]["thinking"] == {"type": "disabled", "enable": False}

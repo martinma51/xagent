@@ -12,6 +12,7 @@ from ...context.enrichment import (
     latest_user_text,
 )
 from ...frame import ExecutionFrame, ExecutionSnapshot, ExecutionStatus
+from ...result import unwrap_final_answer_content
 from ...runtime import LLMCallInterrupted, PatternRuntime
 from ..base import AgentPattern, PatternResult
 from ..react import ReActPattern, ReActReasoningMode
@@ -521,7 +522,8 @@ class DAGPattern(AgentPattern):
         if not steps:
             return None
         if len(steps) == 1:
-            return await self._execute_step(
+            step = steps[0]
+            result = await self._execute_step(
                 step=steps[0],
                 root_context=root_context,
                 tools=tools,
@@ -532,6 +534,18 @@ class DAGPattern(AgentPattern):
                 skill_manager=skill_manager,
                 allowed_skills=allowed_skills,
             )
+            if result is not None:
+                return result
+            if step.status == "failed":
+                return await self._fail(
+                    context=root_context,
+                    runtime=runtime,
+                    error=step.error or f"Step {step.id} failed.",
+                    failure_reason="step_failed",
+                    checkpoint_label="dag_failed",
+                    failed_step_id=step.id,
+                )
+            return None
 
         self.status = "running"
         for step in steps:
@@ -559,12 +573,48 @@ class DAGPattern(AgentPattern):
                     memory_similarity_threshold=memory_similarity_threshold,
                     skill_manager=skill_manager,
                     allowed_skills=allowed_skills,
-                )
+                ),
+                name=f"dag_step_{step.id}",
             ): step.id
             for step in steps
         }
         steps_by_id = {step.id: step for step in steps}
         pending = set(tasks)
+        scheduled_step_ids = set(steps_by_id)
+
+        def schedule_ready_steps() -> None:
+            if self.plan is None:
+                return
+            available_slots = self.max_concurrency - len(pending)
+            if available_slots <= 0:
+                return
+            for ready_step in self._pending_ready_steps():
+                if ready_step.id in scheduled_step_ids:
+                    continue
+                self._mark_step_active(ready_step.id)
+                ready_step.status = "running"
+                task = asyncio.create_task(
+                    self._execute_step(
+                        step=ready_step,
+                        root_context=root_context,
+                        tools=tools,
+                        llm=llm,
+                        runtime=runtime,
+                        memory_store=memory_store,
+                        memory_similarity_threshold=memory_similarity_threshold,
+                        skill_manager=skill_manager,
+                        allowed_skills=allowed_skills,
+                    ),
+                    name=f"dag_step_{ready_step.id}",
+                )
+                tasks[task] = ready_step.id
+                steps_by_id[ready_step.id] = ready_step
+                pending.add(task)
+                scheduled_step_ids.add(ready_step.id)
+                available_slots -= 1
+                if available_slots <= 0:
+                    break
+
         try:
             while pending:
                 done, pending = await asyncio.wait(
@@ -596,7 +646,11 @@ class DAGPattern(AgentPattern):
                             )
                         return result
                     failed_step = next(
-                        (step for step in steps if step.status == "failed"),
+                        (
+                            step
+                            for step in steps_by_id.values()
+                            if step.status == "failed"
+                        ),
                         None,
                     )
                     if failed_step is not None:
@@ -629,6 +683,7 @@ class DAGPattern(AgentPattern):
                             steps_by_id=steps_by_id,
                         )
                         return None
+                schedule_ready_steps()
         except Exception:
             try:
                 await self._cancel_pending_steps(
@@ -684,16 +739,19 @@ class DAGPattern(AgentPattern):
                 metadata={
                     "kind": "dag_step_instruction",
                     "dag_step_id": step.id,
+                    "dag_completion_evidence": step.completion_evidence or "",
                 },
             )
 
         react_pattern = ReActPattern(
             max_iterations=self.react_max_iterations,
             reasoning_mode=self.react_reasoning_mode,
+            finalize_after_tool_result=False,
         )
         active_pattern_state = self.active_step_pattern_states.get(step.id)
         if active_pattern_state is not None:
             react_pattern.load_state(active_pattern_state)
+            react_pattern.finalize_after_tool_result = False
 
         step_runtime = _DAGStepRuntime(
             parent=runtime,
@@ -980,6 +1038,16 @@ class DAGPattern(AgentPattern):
                 ready.append(step)
         return ready
 
+    def _pending_ready_steps(self) -> list[PlanStep]:
+        if self.plan is None:
+            return []
+        return [
+            step
+            for step in self.plan.steps
+            if step.status == "pending"
+            and all(dep in self.step_results for dep in step.dependencies)
+        ]
+
     def _all_steps_completed(self) -> bool:
         return self.plan is not None and all(
             step.status == "completed" for step in self.plan.steps
@@ -1006,7 +1074,7 @@ class DAGPattern(AgentPattern):
 
     def _display_output(self, result: Any) -> str:
         if isinstance(result, str):
-            return result
+            return unwrap_final_answer_content(result)
         return json.dumps(result, ensure_ascii=False, indent=2, default=str)
 
     def _terminal_steps(self) -> list[PlanStep]:
@@ -1036,6 +1104,11 @@ class DAGPattern(AgentPattern):
             else "This step has no dependencies."
         )
         suggested_tools = ", ".join(step.tool_names) if step.tool_names else "(none)"
+        termination_condition = (
+            step.termination_condition
+            or "Return final_answer when the current step description is satisfied."
+        )
+        completion_evidence = step.completion_evidence or "(none)"
         return (
             "DAG STEP EXECUTION BOUNDARY\n"
             "The overall user goal is background context only. Do not execute it "
@@ -1047,9 +1120,18 @@ class DAGPattern(AgentPattern):
             f"Current DAG step description: {step.description or step.task}\n"
             f"Current DAG step dependencies: {list(step.dependencies)}\n"
             f"Suggested tools for this step: {suggested_tools}\n\n"
+            "TERMINATION CONDITION - AUTHORITATIVE STOP RULE\n"
+            f"{termination_condition}\n"
+            f"Completion evidence: {completion_evidence}\n"
+            "Treat this termination condition as authoritative for this step. "
+            "Once it is satisfied, your next action must be final_answer for this "
+            "step. Do not inspect, verify, revise, optimize, regenerate, or perform "
+            "downstream work unless the termination condition explicitly requires "
+            "that work.\n\n"
             f"{dependency_note}\n\n"
             "Execute only the current DAG step. The current step title and "
-            "description define the entire actionable goal for this ReAct run. "
+            "description plus the termination condition define the entire "
+            "actionable goal for this ReAct run. "
             "Do not infer extra work from the overall user goal. Do not complete "
             "downstream, sibling, final synthesis, rendering, screenshots, visual "
             "inspection, export, or delivery work unless that work is explicitly "
