@@ -11,6 +11,7 @@ from xagent.config import (
     EXTERNAL_SKILLS_LIBRARY_DIRS,
     EXTERNAL_UPLOAD_DIRS,
     LANCEDB_PATH,
+    MAX_TRACE_PAYLOAD_BYTES,
     MAX_UPLOAD_SIZE,
     SANDBOX_CPUS,
     SANDBOX_ENV,
@@ -30,6 +31,7 @@ from xagent.config import (
     get_external_skills_dirs,
     get_external_upload_dirs,
     get_lancedb_path,
+    get_max_trace_payload_bytes,
     get_max_upload_size_bytes,
     get_sandbox_cpus,
     get_sandbox_env,
@@ -502,3 +504,28 @@ class TestGetBoxliteHomeDir:
         monkeypatch.setenv(BOXLITE_HOME_DIR, "/custom/boxlite")
         result = get_boxlite_home_dir()
         assert result == Path("/custom/boxlite")
+
+
+class TestGetMaxTracePayloadBytes:
+    """Test get_max_trace_payload_bytes() function."""
+
+    def test_default(self, monkeypatch):
+        monkeypatch.delenv(MAX_TRACE_PAYLOAD_BYTES, raising=False)
+        assert get_max_trace_payload_bytes() == 50_000
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv(MAX_TRACE_PAYLOAD_BYTES, "1234")
+        assert get_max_trace_payload_bytes() == 1234
+
+    def test_zero_passes_through(self, monkeypatch):
+        """Zero disables truncation (handled by truncate_for_trace)."""
+        monkeypatch.setenv(MAX_TRACE_PAYLOAD_BYTES, "0")
+        assert get_max_trace_payload_bytes() == 0
+
+    def test_invalid_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv(MAX_TRACE_PAYLOAD_BYTES, "not-a-number")
+        assert get_max_trace_payload_bytes() == 50_000
+
+    def test_negative_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv(MAX_TRACE_PAYLOAD_BYTES, "-100")
+        assert get_max_trace_payload_bytes() == 50_000

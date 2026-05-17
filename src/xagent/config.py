@@ -47,6 +47,7 @@ WEB_SEARCH_PROVIDER = "XAGENT_WEB_SEARCH_PROVIDER"
 TOOL_MAX_OUTPUT_LENGTH = "XAGENT_TOOL_MAX_OUTPUT_LENGTH"
 TOOL_MAX_RECURSION_DEPTH = "XAGENT_TOOL_MAX_RECURSION_DEPTH"
 TOOL_MAX_FIELD_COUNT = "XAGENT_TOOL_MAX_FIELD_COUNT"
+MAX_TRACE_PAYLOAD_BYTES = "XAGENT_MAX_TRACE_PAYLOAD_BYTES"
 
 WEB_SEARCH_PROVIDERS = {"auto", "google", "tavily", "exa", "zhipu"}
 
@@ -613,3 +614,34 @@ def get_tool_max_field_count() -> int:
         except ValueError:
             logger.warning("Invalid TOOL_MAX_FIELDS value: {env_str}")
     return 1000
+
+
+def get_max_trace_payload_bytes() -> int:
+    """Max byte size for individual trace payload fields (e.g. data.messages,
+    data.response) before truncation.
+
+    Applies to the LLM I/O audit trace added in fix/llm-trace-coverage. A
+    long DAG task hitting all 9 audit sites can otherwise write multi-MB
+    rows into trace_events.
+
+    Priority:
+        1. XAGENT_MAX_TRACE_PAYLOAD_BYTES env var
+        2. Default 50_000 (~50KB, large enough for typical compacted
+           messages while bounding worst case)
+
+    Returns:
+        Maximum bytes per truncated trace field.
+    """
+    env_str = os.getenv(MAX_TRACE_PAYLOAD_BYTES)
+    if env_str:
+        try:
+            value = int(env_str)
+            if value < 0:
+                logger.warning(
+                    f"Invalid {MAX_TRACE_PAYLOAD_BYTES} value (negative): {env_str!r}"
+                )
+            else:
+                return value
+        except ValueError:
+            logger.warning(f"Invalid {MAX_TRACE_PAYLOAD_BYTES} value: {env_str!r}")
+    return 50_000
