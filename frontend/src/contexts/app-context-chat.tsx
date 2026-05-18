@@ -1158,8 +1158,11 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               return
             }
 
-            // Extract files from context.state.file_info (based on the actual WS event structure)
-            let files = eventData.files || []
+            // Extract files. Sources, in priority order:
+            //   1. eventData.files            — live trace events (DAG plan-execute, continuation)
+            //   2. eventData.attachments     — historical replay of persisted chat messages
+            //   3. eventData.context.state.file_info — legacy v2 / nested context payloads
+            let files = eventData.files || eventData.attachments || []
             if (eventData.context && eventData.context.state && eventData.context.state.file_info) {
               files = eventData.context.state.file_info
             }
@@ -1214,6 +1217,9 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               id: generateMessageId("msg-user"),
               role: "user" as const,
               content: content,
+              // Preserve the plain text separately so the Copy button works even
+              // when ``content`` is a React element wrapping a FileAttachment.
+              rawContent: messageContent,
               timestamp: message.timestamp,
             }
 

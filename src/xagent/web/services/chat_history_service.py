@@ -21,6 +21,8 @@ def persist_user_message(
     task_id: int,
     user_id: int,
     content: str,
+    *,
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[TaskChatMessage]:
     return _persist_message(
         db=db,
@@ -29,6 +31,7 @@ def persist_user_message(
         role="user",
         content=content,
         message_type="user_message",
+        attachments=attachments,
     )
 
 
@@ -119,9 +122,11 @@ def _persist_message(
     content: str,
     message_type: str,
     interactions: Optional[List[Dict[str, Any]]] = None,
+    attachments: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[TaskChatMessage]:
     normalized_content = content.strip()
-    if not normalized_content:
+    # Allow empty content if attachments are present (e.g. user sending only files).
+    if not normalized_content and not attachments:
         return None
 
     message = TaskChatMessage(
@@ -131,6 +136,7 @@ def _persist_message(
         content=normalized_content,
         message_type=message_type,
         interactions=interactions,
+        attachments=attachments if attachments else None,
     )
     db.add(message)
     db.commit()

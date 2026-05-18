@@ -162,3 +162,88 @@ def test_build_assistant_transcript_content_skips_empty_unknown_interactions_hea
     content = build_assistant_transcript_content("Test", [{"type": "unknown_type"}])
 
     assert content == "Test"
+
+
+def test_persist_user_message_stores_attachments_json():
+    """The user's typed text and the file attachments live in separate columns."""
+    db_session = _create_db_session()
+    try:
+        task = _create_task(db_session)
+
+        attachments = [
+            {
+                "file_id": "44dc00e0-d189-43c0-a3bd-2e3e146f422f",
+                "name": "asr_test.wav",
+                "size": 12345,
+                "type": "audio/wav",
+            }
+        ]
+        persisted = persist_user_message(
+            db_session,
+            int(task.id),
+            int(task.user_id),
+            "please transcribe this clip",
+            attachments=attachments,
+        )
+
+        assert persisted is not None
+
+        stored = (
+            db_session.query(TaskChatMessage)
+            .filter(TaskChatMessage.id == int(persisted.id))
+            .one()
+        )
+
+        # The persisted body must NOT include the LLM-only ``## UPLOADED FILES``
+        # block — that block belongs in the system prompt / per-turn LLM context
+        # and would otherwise leak into the chat bubble on reload.
+        assert stored.content == "please transcribe this clip"
+        assert "## UPLOADED FILES" not in stored.content
+        assert stored.attachments == attachments
+    finally:
+        db_session.close()
+
+
+def test_persist_user_message_without_attachments_leaves_column_null():
+    db_session = _create_db_session()
+    try:
+        task = _create_task(db_session)
+
+        persisted = persist_user_message(
+            db_session,
+            int(task.id),
+            int(task.user_id),
+            "hello, no files this turn",
+        )
+
+        assert persisted is not None
+        stored = (
+            db_session.query(TaskChatMessage)
+            .filter(TaskChatMessage.id == int(persisted.id))
+            .one()
+        )
+
+        assert stored.attachments is None
+    finally:
+        db_session.close()
+
+
+def test_persist_user_message_allows_empty_text_when_attachments_present():
+    """A user might send a file with no caption — that should still be saved."""
+    db_session = _create_db_session()
+    try:
+        task = _create_task(db_session)
+
+        persisted = persist_user_message(
+            db_session,
+            int(task.id),
+            int(task.user_id),
+            "",
+            attachments=[{"file_id": "fid", "name": "x.txt"}],
+        )
+
+        assert persisted is not None
+        assert persisted.content == ""
+        assert persisted.attachments == [{"file_id": "fid", "name": "x.txt"}]
+    finally:
+        db_session.close()

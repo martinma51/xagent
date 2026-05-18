@@ -194,6 +194,53 @@ def _append_uploaded_files_context_to_message(
     return f"{message.rstrip()}\n\n{uploaded_files_context}"
 
 
+def _strip_uploaded_files_block(content: str) -> str:
+    """Strip a trailing ``## UPLOADED FILES`` block from a persisted message.
+
+    Older chat messages were stored with the LLM-only ``## UPLOADED FILES``
+    context appended to the user message body. New messages persist the
+    original text plus a separate ``attachments`` column instead. To make
+    historical replay clean for legacy rows, remove the trailing block when
+    we encounter it.
+    """
+    if not content:
+        return content
+    marker_idx = content.rfind("\n## UPLOADED FILES")
+    if marker_idx == -1:
+        # Also handle the rare case where the message is *only* the block.
+        if content.lstrip().startswith("## UPLOADED FILES"):
+            return ""
+        return content
+    return content[:marker_idx].rstrip()
+
+
+def _normalize_attachments_for_persistence(
+    file_info_list: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Project file_info_list to the minimal shape we persist on chat rows.
+
+    The full file_info_list contains absolute filesystem paths which we should
+    not store in chat history. We keep only what the UI needs to render a
+    clickable chip and what later turns might need (the file_id).
+    """
+    attachments: List[Dict[str, Any]] = []
+    for info in file_info_list or []:
+        file_id = info.get("file_id")
+        if not file_id:
+            continue
+        attachments.append(
+            {
+                "file_id": str(file_id),
+                "name": str(
+                    info.get("original_name") or info.get("name") or "uploaded file"
+                ),
+                "size": info.get("size"),
+                "type": info.get("type"),
+            }
+        )
+    return attachments
+
+
 def create_stream_event(
     event_type: str,
     task_id: Union[int, str],
@@ -1959,11 +2006,20 @@ async def handle_chat_message(
                         make_agent_v2_outbound_handler(task_id)
                     )
 
+                # Persist the *original* user_message (without the LLM-only
+                # ``## UPLOADED FILES`` context) so historical replay shows the
+                # user's actual words. Uploaded files are persisted separately
+                # in the ``attachments`` column so the UI can render them as
+                # clickable chips on reload.
+                persisted_attachments = _normalize_attachments_for_persistence(
+                    file_info_list
+                )
                 persisted_user_message = persist_user_message(
                     db,
                     task_id=task_id,
                     user_id=int(user.id),
-                    content=user_message_for_llm,
+                    content=user_message,
+                    attachments=persisted_attachments or None,
                 )
 
                 # Check if there's an old task running (PAUSED, WAITING_FOR_USER, or RUNNING status)
@@ -2003,6 +2059,12 @@ async def handle_chat_message(
                             "pattern": "DAG Plan-Execute Continuation",
                             "continuation": "true",
                         }
+                        # Surface uploaded files at the top level so the frontend
+                        # user-message renderer can show clickable file chips
+                        # without having to dig into the context payload.
+                        if persisted_attachments:
+                            trace_data["files"] = persisted_attachments
+                            trace_data["attachments"] = persisted_attachments
                         await trace_user_message(
                             dag_pattern.tracer,
                             str(dag_pattern.task_id),
