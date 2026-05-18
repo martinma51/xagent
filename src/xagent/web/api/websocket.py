@@ -32,6 +32,7 @@ from ...config import (
     get_uploads_dir,
 )
 from ...core.agent.trace import TraceEvent, TraceHandler
+from ...core.file_ref import FILE_REF_MODEL_INSTRUCTIONS, build_file_ref
 from ..auth_dependencies import get_user_from_websocket_token
 from ..models.database import get_db
 from ..models.task import Task, TaskStatus
@@ -170,6 +171,8 @@ def _build_uploaded_files_context(
         "## UPLOADED FILES",
         "The user has uploaded file(s) for this turn. Use these exact file_id values:",
         *file_summaries,
+        "",
+        FILE_REF_MODEL_INSTRUCTIONS,
     ]
     if is_agent_builder:
         joined_file_ids = ", ".join(f'"{file_id}"' for file_id in file_ids)
@@ -638,12 +641,50 @@ def _add_file_link_aliases(
         path_to_file_id[f"/{task_local_path}"] = file_id
 
 
+def _uploaded_file_record_in_task_scope(
+    file_record: Any, task_id: int, task_user_id: int
+) -> bool:
+    try:
+        record_user_id = int(getattr(file_record, "user_id"))
+    except (TypeError, ValueError):
+        return False
+
+    if record_user_id != int(task_user_id):
+        return False
+
+    record_task_id = getattr(file_record, "task_id", None)
+    if record_task_id is None:
+        return True
+
+    try:
+        return int(record_task_id) == int(task_id)
+    except (TypeError, ValueError):
+        return False
+
+
+def _output_path_in_current_task_scope(
+    relative_path: str, task_id: int, task_user_id: int
+) -> bool:
+    parts = Path(relative_path.lstrip("/")).parts
+    task_dirs = {f"web_task_{task_id}", f"task_{task_id}"}
+
+    if (
+        len(parts) >= 4
+        and parts[0] == f"user_{task_user_id}"
+        and parts[1] in task_dirs
+        and parts[2] == "output"
+    ):
+        return True
+
+    return len(parts) >= 3 and parts[0] in task_dirs and parts[1] == "output"
+
+
 def _normalize_file_outputs(
     db: Session,
     task_id: int,
     task_user_id: int,
     file_outputs: Any,
-) -> tuple[list[Dict[str, str]], Dict[str, str]]:
+) -> tuple[list[Dict[str, Any]], Dict[str, str]]:
     from ..models.uploaded_file import UploadedFile
 
     if isinstance(file_outputs, str):
@@ -651,7 +692,7 @@ def _normalize_file_outputs(
     if not isinstance(file_outputs, list):
         return [], {}
 
-    normalized_outputs: list[Dict[str, str]] = []
+    normalized_outputs: list[Dict[str, Any]] = []
     path_to_file_id: Dict[str, str] = {}
     changed = False
 
@@ -682,16 +723,45 @@ def _normalize_file_outputs(
 
         if resolved_info is None:
             if item_file_id:
+                file_record = (
+                    db.query(UploadedFile)
+                    .filter(
+                        UploadedFile.file_id == item_file_id,
+                        UploadedFile.user_id == task_user_id,
+                        or_(
+                            UploadedFile.task_id == task_id,
+                            UploadedFile.task_id.is_(None),
+                        ),
+                    )
+                    .first()
+                )
+                if file_record is None:
+                    logger.warning(
+                        "Skipping file output outside task/user scope: %s",
+                        item_file_id,
+                    )
+                    continue
                 normalized_outputs.append(
-                    {
-                        "file_id": item_file_id,
-                        "filename": item_filename or "output",
-                    }
+                    build_file_ref(
+                        file_id=str(file_record.file_id),
+                        filename=item_filename or str(file_record.filename),
+                        mime_type=getattr(file_record, "mime_type", None),
+                        size=getattr(file_record, "file_size", None),
+                    )
                 )
             continue
 
         resolved_path, relative_path = resolved_info
         normalized_relative_path = relative_path.lstrip("/")
+        if not _output_path_in_current_task_scope(
+            normalized_relative_path, task_id, task_user_id
+        ):
+            logger.warning(
+                "Skipping file output outside current task output scope: %s",
+                relative_path,
+            )
+            continue
+
         expected_file_id = item_file_id or _build_output_file_id(
             normalized_relative_path
         )
@@ -701,10 +771,25 @@ def _normalize_file_outputs(
             .filter(UploadedFile.storage_path == str(resolved_path))
             .first()
         )
+        if file_record is not None and not _uploaded_file_record_in_task_scope(
+            file_record, task_id, task_user_id
+        ):
+            logger.warning(
+                "Skipping file output record outside task/user scope: %s",
+                getattr(file_record, "file_id", str(resolved_path)),
+            )
+            continue
+
         if file_record is None and item_file_id:
             file_record = (
                 db.query(UploadedFile)
-                .filter(UploadedFile.file_id == item_file_id)
+                .filter(
+                    UploadedFile.file_id == item_file_id,
+                    UploadedFile.user_id == task_user_id,
+                    or_(
+                        UploadedFile.task_id == task_id, UploadedFile.task_id.is_(None)
+                    ),
+                )
                 .first()
             )
 
@@ -729,10 +814,12 @@ def _normalize_file_outputs(
             path_to_file_id[item_file_id] = final_file_id
 
         normalized_outputs.append(
-            {
-                "file_id": final_file_id,
-                "filename": final_filename,
-            }
+            build_file_ref(
+                file_id=final_file_id,
+                filename=final_filename,
+                mime_type=getattr(file_record, "mime_type", None),
+                size=getattr(file_record, "file_size", None),
+            )
         )
 
         for raw_path in raw_paths:
@@ -2045,6 +2132,7 @@ async def handle_chat_message(
                         file_prompt = (
                             "## UPLOADED FILES\n"
                             f"The user has uploaded {len(file_info_list)} file(s): {file_names}\n\n"
+                            f"{FILE_REF_MODEL_INSTRUCTIONS}\n\n"
                         )
 
                         if is_agent_builder:
@@ -3534,6 +3622,7 @@ async def handle_builder_chat(
             if file_ids:
                 user_message += (
                     f"\n\n[Uploaded file_ids: {file_ids}. "
+                    "Use file_id as the canonical file handle and do not guess storage paths. "
                     "Please call `create_knowledge_base_from_file` with these file_ids immediately, "
                     "then create or update the agent with the resulting collection_name.]"
                 )
