@@ -2215,11 +2215,19 @@ async def handle_chat_message(
                 if task_is_running and supports_live_control:
                     logger.info(f"Using agent message control for task {task_id}")
                     assert agent_service is not None
+                    # Hand the normalized attachments to the runner so its
+                    # tracing callback can surface file chips alongside the
+                    # continuation user-message bubble; matches what
+                    # historical replay shows on reload.
+                    live_continuation_attachments = (
+                        _normalize_attachments_for_persistence(file_info_list)
+                    )
                     posted = await agent_service.post_user_message(
                         str(task_id),
                         user_message_for_llm,
                         request_interrupt=task.status == TaskStatus.RUNNING,
                         reason="new websocket user message",
+                        files=live_continuation_attachments or None,
                     )
                     if not posted:
                         logger.warning(

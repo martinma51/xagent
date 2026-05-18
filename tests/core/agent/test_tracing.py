@@ -118,3 +118,192 @@ async def test_trace_callback_no_tracer_is_noop() -> None:
         context=context,
         result={"success": True, "output": "Done"},
     )
+
+
+@pytest.mark.asyncio
+async def test_trace_callback_surfaces_uploaded_files_for_chip_rendering() -> None:
+    """On run start, file_info from request_context must flow to trace_data.files
+    so the frontend can render attachment chips alongside the user bubble."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-trace")
+    context.metadata["task"] = "can u generate this?"
+    context.metadata["request_context"] = {
+        "uploaded_files": ["/abs/path/Q1.xlsx"],
+        "file_info": [
+            {
+                "file_id": "6cdc124b-d758-47e3-9871-284e1c90a98a",
+                "name": "normalized.xlsx",
+                "original_name": "Q1 Report.xlsx",
+                "size": 291953,
+                "type": (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+                "path": "/abs/leak/should/be/stripped.xlsx",
+            }
+        ],
+    }
+
+    await callback.on_run_start(runner=runner, context=context)
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["files"] == [
+        {
+            "file_id": "6cdc124b-d758-47e3-9871-284e1c90a98a",
+            "name": "Q1 Report.xlsx",
+            "size": 291953,
+            "type": (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        }
+    ]
+    assert data["attachments"] == data["files"]
+    for f in data["files"]:
+        assert "path" not in f
+
+
+@pytest.mark.asyncio
+async def test_on_user_message_posted_emits_trace_event_with_files() -> None:
+    """When the websocket calls ``post_user_message`` with attachments, the
+    runner's ``on_user_message_posted`` callback must emit a user_message
+    trace event with the files surfaced at the top level."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-cont")
+    context.metadata["task"] = "Original task"
+    files = [
+        {
+            "file_id": "fid-cont-1",
+            "name": "follow-up.pdf",
+            "size": 4096,
+            "type": "application/pdf",
+        }
+    ]
+    new_message = context.add_user_message(
+        "Follow-up question with a file.",
+        metadata={"files": files},
+    )
+
+    await callback.on_user_message_posted(
+        runner=runner,
+        context=context,
+        message=new_message,
+        files=files,
+    )
+
+    assert len(tracer.events) == 1
+    event = tracer.events[0]
+    assert event["event_type"] == "task_start_message"
+    assert event["data"]["message"] == "Follow-up question with a file."
+    assert event["data"]["files"] == files
+    assert event["data"]["attachments"] == files
+
+
+@pytest.mark.asyncio
+async def test_on_user_message_posted_prevents_resume_from_duplicating() -> None:
+    """After ``on_user_message_posted`` fires, a subsequent resume must NOT
+    re-emit the same user_message trace event — the watermark stored on
+    ``context.metadata`` is the claim ticket that prevents duplication."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-cont")
+    context.metadata["task"] = "Original task"
+    msg = context.add_user_message("Follow-up.", metadata={"files": []})
+
+    await callback.on_user_message_posted(runner=runner, context=context, message=msg)
+    await callback.on_run_start(runner=runner, context=context, resume=True)
+
+    assert len(tracer.events) == 1  # not two
+
+
+@pytest.mark.asyncio
+async def test_on_run_start_resume_emits_untraced_user_message() -> None:
+    """If a checkpoint contains a user message whose trace event was never
+    emitted (e.g., worker crashed between persist and emit), the resume's
+    ``on_run_start`` must replay it so the chip still shows up."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-recovery")
+    context.metadata["task"] = "Original task"
+    files = [
+        {
+            "file_id": "fid-recover",
+            "name": "recover.csv",
+            "size": 256,
+            "type": "text/csv",
+        }
+    ]
+    context.add_user_message("Continue from here.", metadata={"files": files})
+
+    await callback.on_run_start(
+        runner=runner,
+        context=context,
+        resume=True,
+        checkpoint={"context": context.to_dict()},
+    )
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["message"] == "Continue from here."
+    assert data["files"] == files
+
+
+@pytest.mark.asyncio
+async def test_on_run_start_resume_skips_already_traced_user_messages() -> None:
+    """A pure resume (no new user message since the watermark) must NOT
+    emit anything — protects scenario where user clicks "Resume" on a
+    paused task without sending a new message."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-pure-resume")
+    context.metadata["task"] = "Original task"
+    msg = context.add_user_message("Original turn.")
+    callback._mark_traced(context, msg)
+
+    await callback.on_run_start(runner=runner, context=context, resume=True)
+    await callback.on_run_start(
+        runner=runner, context=context, checkpoint={"context": context.to_dict()}
+    )
+
+    assert tracer.events == []
+
+
+@pytest.mark.asyncio
+async def test_on_run_start_resume_falls_back_to_request_context_for_initial_files() -> (
+    None
+):
+    """Crash-recovery for the very first turn: runner attaches the initial
+    user message but didn't propagate request_context.file_info into
+    Message.metadata. The resume catch-up surfaces chips by falling back
+    to context.metadata.request_context.file_info for that turn."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-first-recovery")
+    context.metadata["task"] = "Initial task"
+    context.metadata["request_context"] = {
+        "file_info": [
+            {
+                "file_id": "fid-initial",
+                "name": "initial.xlsx",
+                "original_name": "initial.xlsx",
+                "size": 1024,
+                "type": (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+            }
+        ]
+    }
+    context.add_user_message("Initial task")
+
+    await callback.on_run_start(runner=runner, context=context, resume=True)
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["files"][0]["file_id"] == "fid-initial"
