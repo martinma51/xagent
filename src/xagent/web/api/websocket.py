@@ -279,7 +279,7 @@ def _selected_file_refs_from_task(task: Any, db: Session) -> list[dict[str, Any]
 
 
 def _normalize_attachments_for_persistence(
-    file_info_list: List[Dict[str, Any]],
+    file_info_list: Optional[List[Dict[str, Any]]],
 ) -> List[Dict[str, Any]]:
     """Project file_info_list to the minimal shape we persist on chat rows.
 

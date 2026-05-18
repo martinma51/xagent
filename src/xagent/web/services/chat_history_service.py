@@ -65,7 +65,11 @@ def persist_user_message_no_commit(
         content=normalized_content,
         message_type="user_message",
         interactions=None,
-        attachments=attachments if attachments else None,
+        # Pass through ``attachments`` directly so an explicit empty list
+        # round-trips as ``[]`` rather than being coerced to ``NULL`` —
+        # callers may want to distinguish "no attachments specified" from
+        # "attachments key was set, just empty".
+        attachments=attachments,
     )
     db.add(message)
     return message
@@ -171,7 +175,9 @@ def _persist_message(
         content=normalized_content,
         message_type=message_type,
         interactions=interactions,
-        attachments=attachments if attachments else None,
+        # Pass through ``attachments`` directly so an explicit empty list
+        # round-trips as ``[]`` rather than being coerced to ``NULL``.
+        attachments=attachments,
     )
     db.add(message)
     db.commit()

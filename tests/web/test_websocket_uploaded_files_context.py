@@ -602,4 +602,4 @@ def test_normalize_attachments_drops_entries_without_file_id():
 
 def test_normalize_attachments_handles_empty():
     assert _normalize_attachments_for_persistence([]) == []
-    assert _normalize_attachments_for_persistence(None) == []  # type: ignore[arg-type]
+    assert _normalize_attachments_for_persistence(None) == []

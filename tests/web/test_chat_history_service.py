@@ -229,3 +229,26 @@ def test_persist_user_message_no_commit_allows_empty_content_with_attachments():
         )
     finally:
         db_session.close()
+
+
+def test_persist_user_message_preserves_empty_attachments_list_as_empty_list():
+    """An explicit empty ``attachments=[]`` (e.g. a SDK caller that always
+    sends the key) must round-trip as ``[]`` rather than being coerced to
+    ``NULL`` — callers may want to distinguish "no attachments specified"
+    from "attachments key was set, just empty"."""
+    db_session = _create_db_session()
+    try:
+        task = _create_task(db_session)
+        # Non-empty content + empty attachments → row persists with [].
+        persist_user_message(
+            db_session,
+            int(task.id),
+            int(task.user_id),
+            "Just a text message.",
+            attachments=[],
+        )
+        row = db_session.query(TaskChatMessage).first()
+        assert row is not None
+        assert row.attachments == []  # not None
+    finally:
+        db_session.close()
