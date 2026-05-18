@@ -11,6 +11,7 @@ from xagent.web.services.chat_history_service import (
     load_task_transcript,
     persist_assistant_message,
     persist_user_message,
+    persist_user_message_no_commit,
 )
 
 
@@ -162,3 +163,69 @@ def test_build_assistant_transcript_content_skips_empty_unknown_interactions_hea
     content = build_assistant_transcript_content("Test", [{"type": "unknown_type"}])
 
     assert content == "Test"
+
+
+def test_persist_user_message_stores_attachments_for_chip_replay():
+    """Uploaded-file metadata must round-trip through ``attachments`` so the
+    historical-replay path can render the same chips the user saw live."""
+    db_session = _create_db_session()
+    try:
+        task = _create_task(db_session)
+        attachments = [
+            {
+                "file_id": "fid-1",
+                "name": "Q1 Report.xlsx",
+                "size": 12345,
+                "type": (
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+            }
+        ]
+        persist_user_message(
+            db_session,
+            int(task.id),
+            int(task.user_id),
+            "Read this for me.",
+            attachments=attachments,
+        )
+        row = db_session.query(TaskChatMessage).first()
+        assert row is not None
+        assert row.attachments == attachments
+    finally:
+        db_session.close()
+
+
+def test_persist_user_message_no_commit_allows_empty_content_with_attachments():
+    """User uploaded files without typing — the row should still be staged
+    so the chips survive reload."""
+    db_session = _create_db_session()
+    try:
+        task = _create_task(db_session)
+        attachments = [{"file_id": "fid-only", "name": "x.pdf"}]
+        msg = persist_user_message_no_commit(
+            db_session,
+            int(task.id),
+            int(task.user_id),
+            "",
+            attachments=attachments,
+        )
+        assert msg is not None
+        db_session.commit()
+        row = db_session.query(TaskChatMessage).first()
+        assert row is not None
+        assert row.content == ""
+        assert row.attachments == attachments
+
+        # Sanity guard: still drops empty rows with no attachments.
+        assert (
+            persist_user_message_no_commit(
+                db_session,
+                int(task.id),
+                int(task.user_id),
+                "   ",
+                attachments=None,
+            )
+            is None
+        )
+    finally:
+        db_session.close()

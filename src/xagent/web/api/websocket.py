@@ -278,6 +278,34 @@ def _selected_file_refs_from_task(task: Any, db: Session) -> list[dict[str, Any]
     return refs
 
 
+def _normalize_attachments_for_persistence(
+    file_info_list: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Project file_info_list to the minimal shape we persist on chat rows.
+
+    The full file_info_list contains absolute filesystem paths which we
+    must not store in chat history (the field is exposed to historical-
+    replay clients). We keep only what the UI needs to render a clickable
+    chip and what later turns might need (the file_id).
+    """
+    attachments: List[Dict[str, Any]] = []
+    for info in file_info_list or []:
+        file_id = info.get("file_id")
+        if not file_id:
+            continue
+        attachments.append(
+            {
+                "file_id": str(file_id),
+                "name": str(
+                    info.get("original_name") or info.get("name") or "uploaded file"
+                ),
+                "size": info.get("size"),
+                "type": info.get("type"),
+            }
+        )
+    return attachments
+
+
 def create_stream_event(
     event_type: str,
     task_id: Union[int, str],
@@ -2106,11 +2134,21 @@ async def handle_chat_message(
                     ):
                         from ...core.agent.trace import trace_user_message
 
-                        trace_data = {
+                        trace_data: Dict[str, Any] = {
                             "context": context,
                             "pattern": "DAG Plan-Execute Continuation",
                             "continuation": "true",
                         }
+                        # Surface uploaded files at the top level so the
+                        # frontend user-message renderer can show clickable
+                        # file chips alongside the continuation bubble
+                        # (matches what historical replay shows on reload).
+                        continuation_attachments = (
+                            _normalize_attachments_for_persistence(file_info_list)
+                        )
+                        if continuation_attachments:
+                            trace_data["files"] = continuation_attachments
+                            trace_data["attachments"] = continuation_attachments
                         await trace_user_message(
                             dag_pattern.tracer,
                             str(dag_pattern.task_id),
@@ -2306,9 +2344,16 @@ async def handle_chat_message(
                         TurnKind,
                     )
 
+                    # Strip absolute filesystem paths before the row hits
+                    # disk — the attachments column is exposed to historical-
+                    # replay clients, so paths must not leak.
+                    persisted_attachments = _normalize_attachments_for_persistence(
+                        file_info_list
+                    )
                     payload = TaskTurnPayload(
                         transcript_message=display_user_message,
                         execution_message=user_message_for_llm,
+                        attachments=persisted_attachments or None,
                     )
                     # WS path only has two legal entries into begin_turn:
                     #   PENDING                  → CREATE
