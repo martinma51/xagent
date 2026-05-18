@@ -179,6 +179,10 @@ class TraceEventCallback:
     async def _emit_untraced_user_messages(self, *, tracer: Any, context: Any) -> None:
         watermark = self._watermark(context)
         messages = list(getattr(context, "messages", []) or [])
+        # Resolve once outside the loop — every miss inside would otherwise
+        # rescan the full message list (O(N^2) in the worst case where many
+        # turns lack ``Message.metadata['files']``).
+        first_user_idx = self._first_user_message_index(messages)
         for index, message in enumerate(messages):
             if getattr(message, "role", None) != "user":
                 continue
@@ -192,7 +196,7 @@ class TraceEventCallback:
             # path attaches files to the request_context dict but not to the
             # ``Message`` itself, so a crash-recovery resume needs this
             # fallback to surface chips for the *original* turn.
-            if not files and index == self._first_user_message_index(messages):
+            if not files and index == first_user_idx:
                 files = self._files_from_context(context)
             # File-only message (empty content + non-empty files) is a real
             # turn — the persist layer keeps the row when attachments are
