@@ -478,7 +478,18 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, isHistoryLoading: action.payload }
 
     case "SYNC_PROCESSING_STATUS":
-      if (state.currentTask?.status === 'completed' || state.currentTask?.status === 'failed') {
+      // Stop the spinner on every status where the agent isn't actively
+      // running — covers the reload-time stabilization dispatched by
+      // ``historical_data_complete``. Without ``paused`` /
+      // ``waiting_for_user`` here, refreshing a paused or asking-question
+      // task would leave isProcessing stuck at true because the live-event
+      // handlers (which now cover those cases too) never run on cold load.
+      if (
+        state.currentTask?.status
+        && ["paused", "waiting_for_user", "completed", "failed"].includes(
+          state.currentTask.status,
+        )
+      ) {
         return { ...state, isProcessing: false }
       }
       return state
@@ -1098,6 +1109,23 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             // We do NOT stop loading here for new tasks anymore.
             // We wait for the user_message event or the timeout to handle it.
             // This prevents the empty state flash when task_info arrives before user_message.
+
+            // Stop the processing spinner when the task enters a terminal /
+            // control-returned-to-user state. The backend's
+            // ``execute_task_background`` path emits ``task_info`` (not
+            // ``task_completed``) when the agent returns ``waiting_for_user``
+            // or ``interrupted`` — without this branch the spinner would
+            // stay on forever and the final LLM trace event ("LLM Call Start"
+            // / "LLM Task Completed") would appear stuck, even though the
+            // assistant message is already in the DB and shows up correctly
+            // on reload via historical replay.
+            if (
+              ["paused", "waiting_for_user", "completed", "failed"].includes(
+                taskData.status,
+              )
+            ) {
+              dispatch({ type: "SET_PROCESSING", payload: false })
+            }
           } else if (eventType === "dag_execution") {
             dispatch({ type: "SET_HISTORY_LOADING", payload: false })
             const steps = stepsFromPlanData(eventData, currentState.steps)
@@ -3517,6 +3545,13 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
       case "task_paused":
         console.trace('Original message:', JSON.stringify(message), 'Handler: handleMessage (task_paused)')
         dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "paused" } })
+        // Control has returned to the user — stop the spinner so the UI
+        // doesn't stay stuck on the last "LLM Call Start" trace event.
+        // The backend emits this top-level ``task_paused`` message
+        // *instead of* ``task_completed`` when an agent auto-pauses
+        // mid-run; without resetting here, isProcessing stays true and
+        // the chat looks hung until the user reloads the page.
+        dispatch({ type: "SET_PROCESSING", payload: false })
         break
 
       case "task_waiting_for_user":
@@ -3532,6 +3567,10 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             waitingInteractions: interactions.length > 0 ? interactions : undefined,
           }
         })
+        // Same as ``task_paused`` — the agent is no longer running, so
+        // the processing spinner must stop. The ask-user question is
+        // rendered below; the input box should be enabled.
+        dispatch({ type: "SET_PROCESSING", payload: false })
         if (
           waitingMessage &&
           waitingMessage !== "Task waiting for user response" &&
@@ -3556,6 +3595,11 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
       case "task_resumed":
         console.trace('Original message:', JSON.stringify(message), 'Handler: handleMessage (task_resumed)')
         dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "running" } })
+        // The agent is running again — turn the spinner back on so the
+        // UI matches the actual execution state. Without this, a resumed
+        // task would render as "idle" even while the agent was actively
+        // processing the next turn.
+        dispatch({ type: "SET_PROCESSING", payload: true })
         break
 
       case "agent_error":
