@@ -2674,6 +2674,35 @@ async def send_historical_data_as_stream(
             task_user_id = int(cast(Any, task.user_id))
             trace_message_keys: set[tuple[str, str]] = set()
 
+            # Pre-index attachments from chat_messages so we can backfill
+            # ``files``/``attachments`` onto older trace events that pre-date
+            # the v2 tracing callback's chip-surfacing fix. Without this,
+            # the dedup below would drop the chat_messages row (which holds
+            # the attachments) in favor of an older attachment-less trace
+            # event, and the chip would silently disappear on reload.
+            chat_messages = (
+                db.query(TaskChatMessage)
+                .filter(TaskChatMessage.task_id == task_id)
+                .order_by(TaskChatMessage.created_at, TaskChatMessage.id)
+                .all()
+            )
+            user_attachments_by_content: Dict[str, list] = {}
+            for chat_message in chat_messages:
+                if str(chat_message.role) != "user":
+                    continue
+                stored_attachments = chat_message.attachments
+                if not isinstance(stored_attachments, list) or not stored_attachments:
+                    continue
+                stripped = _strip_uploaded_files_block(
+                    str(chat_message.content or "")
+                ).strip()
+                if not stripped:
+                    continue
+                # Only set the first occurrence; if the same prompt is sent
+                # twice, the trace events will be paired in chronological
+                # order and we backfill onto the corresponding trace.
+                user_attachments_by_content.setdefault(stripped, stored_attachments)
+
             for trace_event in trace_events:
                 normalized_event_data = trace_event.data
                 if isinstance(trace_event.data, dict):
@@ -2696,10 +2725,20 @@ async def send_historical_data_as_stream(
                         "message"
                     ) or normalized_event_data.get("content")
                     if isinstance(content, str) and content.strip():
+                        stripped_content = content.strip()
                         if trace_event.event_type == "user_message":
-                            trace_message_keys.add(("user", content.strip()))
+                            trace_message_keys.add(("user", stripped_content))
+                            # Backfill chips for legacy trace events that
+                            # didn't include attachments at emit time.
+                            if not normalized_event_data.get("files"):
+                                attachments = user_attachments_by_content.get(
+                                    stripped_content
+                                )
+                                if attachments:
+                                    normalized_event_data["files"] = attachments
+                                    normalized_event_data["attachments"] = attachments
                         elif trace_event.event_type in {"agent_message", "ai_message"}:
-                            trace_message_keys.add(("assistant", content.strip()))
+                            trace_message_keys.add(("assistant", stripped_content))
 
             for trace_event in trace_events:
                 normalized_event_data = normalized_trace_data_by_event_id.get(
@@ -2730,24 +2769,38 @@ async def send_historical_data_as_stream(
                     }
                 )
 
-            chat_messages = (
-                db.query(TaskChatMessage)
-                .filter(TaskChatMessage.task_id == task_id)
-                .order_by(TaskChatMessage.created_at, TaskChatMessage.id)
-                .all()
-            )
+            # ``chat_messages`` was already loaded above to pre-index
+            # attachments for trace-event backfill — iterate the same rows
+            # here to emit chat-only entries (e.g., assistant responses
+            # that weren't traced, or user rows whose content differs from
+            # any trace event).
             for chat_message in chat_messages:
                 role = str(chat_message.role)
-                content = str(chat_message.content or "").strip()
-                if not content:
-                    continue
-                if (role, content) in trace_message_keys:
-                    continue
+                raw_content = str(chat_message.content or "")
+                _att = chat_message.attachments
+                row_attachments: Optional[list] = (
+                    _att if isinstance(_att, list) else None
+                )
 
                 if role == "user":
+                    # Strip the legacy ``## UPLOADED FILES`` block from older
+                    # rows so the user bubble shows only the user's words.
+                    content = _strip_uploaded_files_block(raw_content).strip()
+                    if not content and not row_attachments:
+                        continue
+                    if (role, content) in trace_message_keys:
+                        continue
                     event_type = "user_message"
                     data: dict[str, Any] = {"message": content, "content": content}
+                    if row_attachments:
+                        data["files"] = row_attachments
+                        data["attachments"] = row_attachments
                 elif role == "assistant":
+                    content = raw_content.strip()
+                    if not content:
+                        continue
+                    if (role, content) in trace_message_keys:
+                        continue
                     interactions = chat_message.interactions
                     data = {
                         "message": content,
