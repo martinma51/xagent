@@ -275,6 +275,98 @@ async def test_on_run_start_resume_skips_already_traced_user_messages() -> None:
 
 
 @pytest.mark.asyncio
+async def test_on_run_start_fresh_emits_for_file_only_initial_turn() -> None:
+    """User uploaded files without typing on the first turn — the live
+    bubble must still fire (the transcript row is persisted by
+    ``persist_user_message_no_commit`` when attachments are present, so the
+    trace event should match)."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-file-only-fresh")
+    # No ``metadata["task"]`` and no user message in context — only files.
+    context.metadata["request_context"] = {
+        "file_info": [
+            {
+                "file_id": "fid-only-upload",
+                "name": "report.pdf",
+                "size": 1024,
+                "type": "application/pdf",
+            }
+        ]
+    }
+
+    await callback.on_run_start(runner=runner, context=context)
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["files"][0]["file_id"] == "fid-only-upload"
+
+
+@pytest.mark.asyncio
+async def test_on_user_message_posted_emits_for_file_only_continuation() -> None:
+    """Continuation where the user only attaches files (no new text) must
+    still emit a trace event so the live chip lands — mirrors the
+    persistence layer, which keeps file-only rows."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-file-only-cont")
+    context.metadata["task"] = "Original task"
+    files = [{"file_id": "fid-only", "name": "x.pdf"}]
+    new_msg = context.add_user_message("", metadata={"files": files})
+
+    await callback.on_user_message_posted(
+        runner=runner, context=context, message=new_msg, files=files
+    )
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["message"] == ""
+    assert data["files"] == files
+
+
+@pytest.mark.asyncio
+async def test_on_user_message_posted_still_skips_truly_empty_turn() -> None:
+    """Regression guard: when there's neither text nor files, the callback
+    must stay silent — otherwise an accidental empty inject would emit a
+    blank bubble."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-empty")
+    empty_msg = context.add_user_message("")
+
+    await callback.on_user_message_posted(
+        runner=runner, context=context, message=empty_msg, files=None
+    )
+
+    assert tracer.events == []
+
+
+@pytest.mark.asyncio
+async def test_emit_untraced_picks_up_file_only_message_on_resume() -> None:
+    """Crash-recovery: a checkpoint with a file-only user message (empty
+    content + files in Message.metadata) must surface its chip on resume."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-file-only-recover")
+    context.metadata["task"] = "Original task"
+    context.add_user_message("Original turn.")
+    callback._mark_traced(context, context.messages[-1])
+    # Second turn: file-only, never traced before the crash.
+    files = [{"file_id": "fid-rec", "name": "rec.csv"}]
+    context.add_user_message("", metadata={"files": files})
+
+    await callback.on_run_start(runner=runner, context=context, resume=True)
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["files"] == files
+
+
+@pytest.mark.asyncio
 async def test_on_run_start_resume_falls_back_to_request_context_for_initial_files() -> (
     None
 ):

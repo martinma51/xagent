@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from .attachments import project_file_info_to_chip
 from .result import extract_assistant_message
 from .trace import (
     get_display_user_message,
@@ -40,13 +41,21 @@ class TraceEventCallback:
 
         if not (resume or checkpoint):
             task = self._task_from_context(context)
-            if not task:
+            files = self._files_from_context(context)
+            # File-only turn: the user uploaded files without typing. The
+            # transcript row is still persisted (see
+            # ``persist_user_message_no_commit``), so the live trace bubble
+            # should also fire — otherwise the chip would only show up on
+            # next reload via historical replay, mismatching the persist
+            # behavior. ``get_display_user_message`` is what handles the
+            # "" → "Uploaded file(s)" frontend fallback in the bubble.
+            if not task and not files:
                 return
             await self._emit_user_message_trace(
                 tracer=tracer,
                 context=context,
-                message=get_display_user_message(context, task),
-                files=self._files_from_context(context),
+                message=get_display_user_message(context, task or ""),
+                files=files,
             )
             # Mark the latest user message (if the runner added one) as
             # traced so a subsequent resume does not re-emit it.
@@ -86,10 +95,13 @@ class TraceEventCallback:
             return
 
         content = getattr(message, "content", None) or ""
-        if not content:
-            return
-
         resolved_files = files or self._files_from_message(message)
+        # File-only continuation: user uploaded files without typing.
+        # ``inject_user_message`` still added the (empty-content) Message
+        # so the chip survives checkpoints — we mirror that here and let
+        # the frontend's ``has_files`` fallback render the bubble.
+        if not content and not resolved_files:
+            return
         await self._emit_user_message_trace(
             tracer=tracer,
             context=context,
@@ -171,8 +183,6 @@ class TraceEventCallback:
             if getattr(message, "role", None) != "user":
                 continue
             content = getattr(message, "content", None) or ""
-            if not content:
-                continue
             ts = self._message_timestamp_iso(message)
             if watermark and ts and ts <= watermark:
                 continue
@@ -184,6 +194,11 @@ class TraceEventCallback:
             # fallback to surface chips for the *original* turn.
             if not files and index == self._first_user_message_index(messages):
                 files = self._files_from_context(context)
+            # File-only message (empty content + non-empty files) is a real
+            # turn — the persist layer keeps the row when attachments are
+            # present, and the live bubble should match.
+            if not content and not files:
+                continue
             await self._emit_user_message_trace(
                 tracer=tracer,
                 context=context,
@@ -262,12 +277,13 @@ class TraceEventCallback:
         return None
 
     def _files_from_context(self, context: Any) -> list[dict[str, Any]]:
-        """Extract uploaded-file metadata from the execution context.
+        """Extract uploaded-file chips from the execution context.
 
         The websocket adapter wraps the raw context dict — including
         ``file_info`` — inside ``metadata["request_context"]`` when starting
-        a run. Project that into the minimal shape the frontend FileAttachment
-        chip needs, stripping absolute filesystem paths.
+        a run. Delegates the projection (and path stripping) to the shared
+        ``project_file_info_to_chip`` helper so the chip shape stays
+        consistent with the persistence-layer normalization.
         """
         metadata = getattr(context, "metadata", None)
         if not isinstance(metadata, dict):
@@ -275,25 +291,4 @@ class TraceEventCallback:
         request_context = metadata.get("request_context")
         if not isinstance(request_context, dict):
             return []
-        file_info_list = request_context.get("file_info")
-        if not isinstance(file_info_list, list):
-            return []
-
-        projected: list[dict[str, Any]] = []
-        for info in file_info_list:
-            if not isinstance(info, dict):
-                continue
-            file_id = info.get("file_id")
-            if not file_id:
-                continue
-            projected.append(
-                {
-                    "file_id": str(file_id),
-                    "name": str(
-                        info.get("original_name") or info.get("name") or "uploaded file"
-                    ),
-                    "size": info.get("size"),
-                    "type": info.get("type"),
-                }
-            )
-        return projected
+        return project_file_info_to_chip(request_context.get("file_info"))

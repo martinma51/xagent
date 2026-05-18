@@ -283,27 +283,15 @@ def _normalize_attachments_for_persistence(
 ) -> List[Dict[str, Any]]:
     """Project file_info_list to the minimal shape we persist on chat rows.
 
-    The full file_info_list contains absolute filesystem paths which we
-    must not store in chat history (the field is exposed to historical-
-    replay clients). We keep only what the UI needs to render a clickable
-    chip and what later turns might need (the file_id).
+    Thin wrapper around the shared
+    ``core.agent.attachments.project_file_info_to_chip`` so the trace
+    callback and the persistence path can't drift on what fields the
+    browser sees (paths must never leak — the attachments column and the
+    user_message trace events both reach the UI).
     """
-    attachments: List[Dict[str, Any]] = []
-    for info in file_info_list or []:
-        file_id = info.get("file_id")
-        if not file_id:
-            continue
-        attachments.append(
-            {
-                "file_id": str(file_id),
-                "name": str(
-                    info.get("original_name") or info.get("name") or "uploaded file"
-                ),
-                "size": info.get("size"),
-                "type": info.get("type"),
-            }
-        )
-    return attachments
+    from ...core.agent.attachments import project_file_info_to_chip
+
+    return project_file_info_to_chip(file_info_list)
 
 
 def create_stream_event(
