@@ -363,7 +363,65 @@ async def test_emit_untraced_picks_up_file_only_message_on_resume() -> None:
 
     assert len(tracer.events) == 1
     data = tracer.events[0]["data"]
-    assert data["files"] == files
+    # ``_files_from_message`` runs through ``project_file_info_to_chip``
+    # for defense-in-depth, which canonicalizes the chip shape (size/type
+    # default to ``None`` when absent in the source).
+    assert data["files"] == [
+        {"file_id": "fid-rec", "name": "rec.csv", "size": None, "type": None}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_files_from_message_strips_paths_from_unprojected_metadata() -> None:
+    """Defense in depth: if a caller drops raw ``file_info`` (with absolute
+    paths) into ``Message.metadata['files']``, the trace callback must still
+    project it through ``project_file_info_to_chip`` so paths don't reach
+    the browser. ``inject_user_message`` is *supposed* to hand us
+    chip-shaped files, but we don't want to rely on every caller doing
+    the right thing for a security-relevant field."""
+    tracer = TraceRecorder()
+    callback = TraceEventCallback()
+    runner = SimpleNamespace(tracer=tracer)
+    context = ExecutionContext(execution_id="exec-path-leak")
+    context.metadata["task"] = "Original task"
+    # Simulate a caller bypassing the websocket-side normalization.
+    raw_file_info = [
+        {
+            "file_id": "fid",
+            "name": "x.txt",
+            "path": "/abs/secret/should/not/leak.txt",
+            "extra_internal_field": "should-not-leak",
+        }
+    ]
+    msg = context.add_user_message("hi", metadata={"files": raw_file_info})
+
+    await callback.on_user_message_posted(runner=runner, context=context, message=msg)
+
+    assert len(tracer.events) == 1
+    data = tracer.events[0]["data"]
+    assert data["files"] == [
+        {"file_id": "fid", "name": "x.txt", "size": None, "type": None}
+    ]
+    for entry in data["files"]:
+        assert "path" not in entry
+        assert "extra_internal_field" not in entry
+
+
+def test_message_timestamp_iso_normalizes_naive_to_utc() -> None:
+    """Watermark uses ISO-string lexicographical comparison — naive and
+    aware datetimes for the same wall-clock instant must produce the same
+    sort key, otherwise a checkpoint with naive timestamps could let an
+    already-traced message re-emit on resume."""
+    from datetime import datetime, timezone
+
+    callback = TraceEventCallback()
+    naive = SimpleNamespace(timestamp=datetime(2026, 5, 18, 12, 0, 0))
+    aware_utc = SimpleNamespace(
+        timestamp=datetime(2026, 5, 18, 12, 0, 0, tzinfo=timezone.utc)
+    )
+    assert callback._message_timestamp_iso(naive) == callback._message_timestamp_iso(
+        aware_utc
+    )
 
 
 @pytest.mark.asyncio

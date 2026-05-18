@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .attachments import project_file_info_to_chip
@@ -232,7 +232,13 @@ class TraceEventCallback:
     def _message_timestamp_iso(self, message: Any) -> str | None:
         ts = getattr(message, "timestamp", None)
         if isinstance(ts, datetime):
-            return ts.isoformat()
+            # Normalize to UTC so the watermark's lexicographical comparison
+            # is stable even when callers stamp messages with naive datetimes
+            # or non-UTC offsets. Without this, an aware ``T12:00:00+00:00``
+            # would sort *after* an equivalent naive ``T12:00:00`` and the
+            # watermark could let already-traced messages re-emit.
+            aware = ts.replace(tzinfo=timezone.utc) if ts.tzinfo is None else ts
+            return aware.astimezone(timezone.utc).isoformat()
         if isinstance(ts, str) and ts:
             return ts
         return None
@@ -251,13 +257,15 @@ class TraceEventCallback:
         return -1
 
     def _files_from_message(self, message: Any) -> list[dict[str, Any]]:
+        # Run through the shared projector even though ``inject_user_message``
+        # is supposed to hand us already-chip-shaped files. Defense in depth
+        # against a caller that drops raw ``file_info`` (with absolute
+        # paths) into ``Message.metadata['files']`` directly — the trace
+        # event payload reaches the browser, so paths must not leak.
         metadata = getattr(message, "metadata", None)
         if not isinstance(metadata, dict):
             return []
-        files = metadata.get("files")
-        if not isinstance(files, list):
-            return []
-        return [entry for entry in files if isinstance(entry, dict)]
+        return project_file_info_to_chip(metadata.get("files"))
 
     def _context_payload(self, context: Any) -> dict[str, Any] | None:
         to_dict = getattr(context, "to_dict", None)
