@@ -278,6 +278,7 @@ class AgentRunner:
         *,
         request_interrupt: bool = True,
         reason: str | None = None,
+        files: list[dict[str, Any]] | None = None,
     ) -> ExecutionContext | None:
         context = self.context_manager.get_context(execution_id)
         if context is None:
@@ -290,11 +291,29 @@ class AgentRunner:
             context = ExecutionContext.from_dict(checkpoint["context"])
             self.context_manager.set_context(context)
 
-        context.add_user_message(message)
+        # Attach files to the new Message so they survive checkpoint
+        # round-trips (Message.metadata is serialized by ExecutionContext).
+        # The trace callback reads them back from message.metadata when it
+        # emits the user_message trace event.
+        message_metadata: dict[str, Any] | None = {"files": files} if files else None
+        if message_metadata is not None:
+            added = context.add_user_message(message, metadata=message_metadata)
+        else:
+            added = context.add_user_message(message)
+        # Persist BEFORE emitting the trace so the message is durable even
+        # if the trace dispatch fails — the resume path's catch-up logic
+        # in TraceEventCallback.on_run_start will replay any missed events.
         await self._persist_injected_context(
             execution_id=execution_id,
             context=context,
             label="user_message_injected",
+        )
+        await self._dispatch_callback(
+            "on_user_message_posted",
+            runner=self,
+            context=context,
+            message=added,
+            files=files,
         )
         if request_interrupt:
             self.pause(execution_id, reason=reason or "new user message")
@@ -307,6 +326,7 @@ class AgentRunner:
         *,
         request_interrupt: bool = True,
         reason: str | None = None,
+        files: list[dict[str, Any]] | None = None,
     ) -> ExecutionContext | None:
         """Alias for external callers to inject a user message into an execution.
 
@@ -318,6 +338,7 @@ class AgentRunner:
             message,
             request_interrupt=request_interrupt,
             reason=reason,
+            files=files,
         )
 
     async def _build_context(

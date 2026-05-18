@@ -632,6 +632,7 @@ class AgentService:
         *,
         request_interrupt: bool = True,
         reason: Optional[str] = None,
+        files: Optional[List[Dict[str, Any]]] = None,
     ) -> bool:
         if self._v2_adapter is None:
             self._v2_adapter = self._build_v2_adapter()
@@ -641,6 +642,7 @@ class AgentService:
                 message,
                 request_interrupt=request_interrupt,
                 reason=reason,
+                files=files,
             )
         )
 

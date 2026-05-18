@@ -2130,11 +2130,17 @@ async def handle_chat_message(
                     return
                 if task_is_running and supports_v2_control:
                     logger.info(f"Using agent_v2 message control for task {task_id}")
+                    # Hand the normalized attachments to the v2 runner so its
+                    # tracing callback can surface file chips alongside the
+                    # continuation user-message bubble. ``persisted_attachments``
+                    # has already been stripped of absolute filesystem paths
+                    # by ``_normalize_attachments_for_persistence``.
                     posted = await agent_service.post_user_message(
                         str(task_id),
                         user_message_for_llm,
                         request_interrupt=task.status == TaskStatus.RUNNING,
                         reason="new websocket user message",
+                        files=persisted_attachments or None,
                     )
                     if not posted:
                         logger.warning(

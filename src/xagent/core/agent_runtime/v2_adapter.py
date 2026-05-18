@@ -172,6 +172,7 @@ class AgentV2ExecutionAdapter:
         *,
         request_interrupt: bool = True,
         reason: str | None = None,
+        files: list[dict[str, Any]] | None = None,
     ) -> bool:
         if self.registry.get(execution_id) is None:
             runner, execution_type = self._build_runner()
@@ -189,6 +190,7 @@ class AgentV2ExecutionAdapter:
             message,
             request_interrupt=request_interrupt,
             reason=reason,
+            files=files,
         )
         return context is not None
 
