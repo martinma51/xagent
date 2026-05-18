@@ -2854,14 +2854,33 @@ async def send_historical_data_as_stream(
             for chat_message in chat_messages:
                 role = str(chat_message.role)
                 content = str(chat_message.content or "").strip()
-                if not content:
+                # Read attachments off the row so file-only turns (empty
+                # content + non-empty attachments) survive replay and so the
+                # chip metadata reaches the synthesized user_message event.
+                _attachments_raw = chat_message.attachments
+                row_attachments: Optional[list] = (
+                    _attachments_raw
+                    if isinstance(_attachments_raw, list) and _attachments_raw
+                    else None
+                )
+                # Drop only when there's nothing to render — empty text *and*
+                # no attachments. A row with attachments but no text is a real
+                # turn (user uploaded files without typing) and must be kept.
+                if not content and not row_attachments:
                     continue
-                if (role, content) in trace_message_keys:
+                if content and (role, content) in trace_message_keys:
                     continue
 
                 if role == "user":
                     event_type = "user_message"
                     data: dict[str, Any] = {"message": content, "content": content}
+                    if row_attachments:
+                        # Surface the persisted chip payload at the top level
+                        # so the frontend user-message renderer can show
+                        # clickable file chips on reload, matching the live
+                        # event shape emitted by the agent tracing callback.
+                        data["files"] = row_attachments
+                        data["attachments"] = row_attachments
                 elif role == "assistant":
                     interactions = chat_message.interactions
                     data = {
