@@ -15,15 +15,28 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
-# JS source: regex of pptxgenjs API method names whose "methodName: <desc>"
-# console.log output indicates a validation failure that did NOT throw.
-# Keeping the list narrow (only known pptxgenjs methods) avoids
-# misclassifying unrelated user `console.log("Sum: 42")` style strings.
-_PPTXGENJS_WARN_JS_REGEX = (
-    r"/^(?:addText|addTable|addImage|addShape|addChart|"
-    r"addMedia|addNotes|addSlide|addSection|addBackgroundImage|"
-    r"writeFile|stream|write): /"
+# Known pptxgenjs API method names whose "methodName: <desc>" console.log
+# output indicates a validation failure that did NOT throw. Defined as a
+# tuple so additions are obvious in code review; the JS regex is built
+# from it so the two stay in sync. The list is intentionally narrow —
+# only real pptxgenjs methods — so unrelated user logs like
+# `console.log("Sum: 42")` aren't misclassified.
+_PPTXGENJS_WARN_METHODS = (
+    "addText",
+    "addTable",
+    "addImage",
+    "addShape",
+    "addChart",
+    "addMedia",
+    "addNotes",
+    "addSlide",
+    "addSection",
+    "addBackgroundImage",
+    "writeFile",
+    "stream",
+    "write",
 )
+_PPTXGENJS_WARN_JS_REGEX = f"/^(?:{'|'.join(_PPTXGENJS_WARN_METHODS)}): /"
 
 
 def _wrap_user_code(code: str) -> str:
