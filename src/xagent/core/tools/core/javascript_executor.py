@@ -15,6 +15,64 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+# JS source: regex of pptxgenjs API method names whose "methodName: <desc>"
+# console.log output indicates a validation failure that did NOT throw.
+# Keeping the list narrow (only known pptxgenjs methods) avoids
+# misclassifying unrelated user `console.log("Sum: 42")` style strings.
+_PPTXGENJS_WARN_JS_REGEX = (
+    r"/^(?:addText|addTable|addImage|addShape|addChart|"
+    r"addMedia|addNotes|addSlide|addSection|addBackgroundImage|"
+    r"writeFile|stream|write): /"
+)
+
+
+def _wrap_user_code(code: str) -> str:
+    """Build the JS source actually fed to ``node`` for *code*.
+
+    Two responsibilities:
+
+    1. Buffer ``console.log`` so it doesn't interleave with our own
+       diagnostic output. Logs are flushed back to stdout when the
+       script finishes normally.
+    2. Intercept the pptxgenjs "warn only, keep going" failure path —
+       pptxgenjs calls ``console.log("addTable: tableRows has a bad
+       row...")`` and then continues, leaving a malformed ``.pptx`` on
+       disk while node still exits 0. We rewrite the intercepted call
+       to ``throw`` when it matches the pptxgenjs API method pattern,
+       which the outer ``try/catch`` converts to ``process.exit(1)``.
+       That puts the failure on the framework's normal hard-error path
+       (non-zero exit, populated stderr) so the agent gets a clear
+       error signal and can retry with corrected code.
+    """
+    return f"""
+const __PPTXGENJS_WARN_RE = {_PPTXGENJS_WARN_JS_REGEX};
+const __logs = [];
+const __originalLog = console.log;
+console.log = (...args) => {{
+    const __msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    if (__PPTXGENJS_WARN_RE.test(__msg)) {{
+        throw new Error(
+            'pptxgenjs reported a validation problem and the generated '
+            + 'output is likely malformed even though the call did not '
+            + 'throw. Fix the offending arguments and retry. Warning: '
+            + __msg
+        );
+    }}
+    __logs.push(__msg);
+}};
+
+try {{
+{code}
+}} catch (error) {{
+    console.error(error.message);
+    process.exit(1);
+}}
+
+console.log = __originalLog;
+__logs.forEach(__line => console.log(__line));
+"""
+
+
 class JavaScriptExecutorCore:
     """JavaScript executor using Node.js"""
 
@@ -92,9 +150,10 @@ class JavaScriptExecutorCore:
                 json.dumps({"dependencies": deps}), encoding="utf-8"
             )
 
-        # Create the JS script
+        # Create the JS script — wrap user code so pptxgenjs warn-only
+        # failures get converted to throws (see _wrap_user_code).
         script_file = temp_path / "script.js"
-        script_file.write_text(code, encoding="utf-8")
+        script_file.write_text(_wrap_user_code(code), encoding="utf-8")
 
         # Install dependencies if needed
         if deps:
@@ -151,30 +210,13 @@ class JavaScriptExecutorCore:
                 json.dumps({"dependencies": deps}), encoding="utf-8"
             )
 
-        # Create the JS script in execution directory (so files are created there)
+        # Create the JS script in execution directory (so files are created
+        # there). The wrapper buffers console.log AND converts pptxgenjs
+        # warn-only validation failures into thrown errors — see
+        # _wrap_user_code. When capture_output is False the caller has
+        # opted out of buffering and gets the raw code.
         script_file = exec_dir / "script.js"
-
-        # Wrap code to capture output
-        wrapped_code = code
-        if capture_output:
-            wrapped_code = f"""
-const logs = [];
-const originalLog = console.log;
-console.log = (...args) => {{
-    logs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-}};
-
-try {{
-{code}
-}} catch (error) {{
-    console.error(error.message);
-    process.exit(1);
-}}
-
-console.log = originalLog;
-logs.forEach(log => console.log(log));
-"""
-
+        wrapped_code = _wrap_user_code(code) if capture_output else code
         script_file.write_text(wrapped_code, encoding="utf-8")
 
         # Install dependencies in temp directory
