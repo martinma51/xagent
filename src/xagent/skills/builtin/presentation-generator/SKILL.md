@@ -543,7 +543,13 @@ slide.background = { color: theme.content.background };
 slide.addText('Case Breakdown', { x: 0.5, y: 0.4, fontSize: 32, bold: true, color: theme.content.primary });
 
 // Header cells use { text, options }; body cells are plain strings.
-const headerStyle = { bold: true, color: '#FFFFFF', fill: { color: theme.content.primary } };
+// Colors are routed through the theme: light text on the accent fill — no
+// hardcoded hex values.
+const headerStyle = {
+  bold: true,
+  color: theme.content.background,
+  fill: { color: theme.content.accent },
+};
 const rows = [
   [
     { text: 'Case', options: headerStyle },
@@ -567,7 +573,9 @@ slide.addTable(rows, {
 pres.writeFile({ fileName: 'case_breakdown.pptx' });
 ```
 
-**Common wrong shapes that raise `'rows' should be an array of cells!` and abort the script:**
+**Wrong shapes that hard-error and abort the script** (raise
+`'rows' should be an array of cells!`; no `.pptx` is produced; the tool
+returns `success: false`):
 
 ```javascript
 // ❌ Flat array of strings — pptxgenjs expects rows[i] to be an array.
@@ -579,9 +587,26 @@ for (const r of data) flat.push({ text: r.name }, { text: r.value });
 slide.addTable(flat, opts);
 ```
 
-A separate error `addTable: tableRows has a bad row` fires when a row position
-holds something that isn't an array (e.g. a bare `{ text: 'C' }` cell object).
-Always wrap the row: `[{ text: 'C' }]`, not `{ text: 'C' }`.
+**Wrong shapes that only WARN and still produce a (broken) `.pptx`** — these are
+more dangerous because the script finishes, `writeFile` succeeds, and the tool
+returns `success: true`, but the table content is malformed. pptxgenjs prints
+the warning to stdout/stderr without throwing:
+
+```javascript
+// ⚠️ A row position holds something that isn't a row array — e.g. a bare cell
+//   object mixed in with proper row arrays. pptxgenjs logs:
+//     "addTable: tableRows has a bad row. A row should be an array of cells.
+//      You provided: { text: 'C' }"
+//   The malformed row is dropped from the rendered table, but no error is
+//   raised and writeFile completes.
+slide.addTable([['ok'], { text: 'C' }], opts);
+```
+
+After every `execute_javascript_code` call that uses `addTable`, you MUST scan
+the tool's `output` for any line starting with `addTable:`. If one is present,
+treat the table as broken even when `success: true` — re-run with the row
+shape corrected (every row wrapped in `[...]`) instead of telling the user the
+deck rendered cleanly.
 
 ## Working with Images
 
