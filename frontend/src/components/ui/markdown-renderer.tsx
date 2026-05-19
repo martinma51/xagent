@@ -259,7 +259,19 @@ export function MarkdownRenderer({ content, className = '', onFileClick, onAgent
         return <p {...props}>{children}</p>
       },
       a({ node: _node, href, title, children, ...props }) {
-        if (href && href.startsWith('file:')) {
+        // Markdown like `[name]()` (empty parens) or a link whose href was
+        // sanitized away leaves us with no usable destination. The default
+        // anchor render below would still emit `<a>name</a>`, which keeps
+        // the browser's link styling (underline + cursor) without doing
+        // anything on click — exactly what surfaced on the
+        // presentation-generator failure path (PR #432, demo task/1100).
+        // Render those as plain text so "looks like a link" and "is a
+        // link" stay in sync.
+        if (typeof href !== 'string' || href.trim() === '') {
+          return <>{children}</>
+        }
+
+        if (href.startsWith('file:')) {
           const filePath = href.replace(/^file:/, '')
           const fileNameFromPath = filePath.split('/').pop() || filePath
           const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {

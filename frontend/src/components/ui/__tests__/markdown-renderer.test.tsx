@@ -111,4 +111,31 @@ describe('MarkdownRenderer', () => {
 
     expect(apiRequestMock).not.toHaveBeenCalled()
   })
+
+  it('renders empty-href markdown links as plain text, not as <a>', () => {
+    // `[name]()` (empty parens) gets parsed as an anchor with no href.
+    // The renderer should drop the <a> wrapping so we don't ship a
+    // "looks like a link, isn't" element — exactly the failure mode
+    // surfaced by the presentation-generator skill (PR #432, demo
+    // task/1100).
+    const content =
+      'Presentation: [hantavirus_outbreak_presentation.pptx]()'
+    const { container } = render(<MarkdownRenderer content={content} />)
+
+    // The filename text still appears in the document body…
+    expect(container.textContent).toContain(
+      'hantavirus_outbreak_presentation.pptx'
+    )
+    // …but not wrapped in an anchor.
+    expect(container.querySelectorAll('a').length).toBe(0)
+  })
+
+  it('keeps a real anchor for ordinary URL links', () => {
+    const content = '[docs](https://example.com/docs)'
+    render(<MarkdownRenderer content={content} />)
+
+    const link = screen.getByText('docs')
+    expect(link.tagName.toLowerCase()).toBe('a')
+    expect(link).toHaveAttribute('href', 'https://example.com/docs')
+  })
 })
