@@ -164,6 +164,11 @@ class FileInfo(BaseModel):
     is_dir: bool
     modified_time: float
     encoding: Optional[str] = None
+    # File registry ID (UUID) — populated when the file is registered in the
+    # workspace's uploaded_files table. Use this in chat chip links:
+    #   [filename](file:FILE_ID)
+    # Will be None for unregistered files or directories.
+    file_id: Optional[str] = None
     # Image metadata (optional)
     image_width: Optional[int] = None
     image_height: Optional[int] = None
@@ -523,6 +528,15 @@ class WorkspaceFileOperations:
 
         stat = resolved_path.stat()
 
+        # Look up the registered file_id (UUID) so the LLM can build a chip
+        # link `[name](file:UUID)` in its final answer. If the file was not
+        # auto-registered, this returns None (and the chip won't render).
+        file_id: Optional[str] = None
+        try:
+            file_id = self.workspace.get_file_id_from_path(str(resolved_path))
+        except Exception:
+            file_id = None
+
         return FileInfo(
             name=resolved_path.name,
             path=str(resolved_path),
@@ -530,7 +544,8 @@ class WorkspaceFileOperations:
             is_file=resolved_path.is_file(),
             is_dir=resolved_path.is_dir(),
             modified_time=stat.st_mtime,
-            encoding=None,  # Add encoding field
+            encoding=None,
+            file_id=file_id,
             **get_image_metadata(resolved_path),
         )
 
