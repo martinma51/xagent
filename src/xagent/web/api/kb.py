@@ -29,7 +29,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from googleapiclient.discovery import build  # type: ignore
 from googleapiclient.http import MediaIoBaseDownload  # type: ignore
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from ...core.tools.core.RAG_tools.core.config import DEFAULT_VECTOR_STORE_SCAN_LIMIT
@@ -2452,24 +2452,31 @@ async def ingest_web(
             else None
         )
 
-        crawl_config = WebCrawlConfig(
-            start_url=start_url,
-            max_pages=max_pages or 100,
-            max_depth=max_depth or 3,
-            url_patterns=url_patterns_list,
-            exclude_patterns=exclude_patterns_list,
-            same_domain_only=(
-                same_domain_only if same_domain_only is not None else True
-            ),
-            content_selector=content_selector,
-            remove_selectors=remove_selectors_list,
-            concurrent_requests=concurrent_requests or 3,
-            request_delay=request_delay or 1.0,
-            timeout=timeout or 30,
-            respect_robots_txt=(
-                respect_robots_txt if respect_robots_txt is not None else True
-            ),
-        )
+        try:
+            crawl_config = WebCrawlConfig(
+                start_url=start_url,
+                max_pages=max_pages or 100,
+                max_depth=max_depth or 3,
+                url_patterns=url_patterns_list,
+                exclude_patterns=exclude_patterns_list,
+                same_domain_only=(
+                    same_domain_only if same_domain_only is not None else True
+                ),
+                content_selector=content_selector,
+                remove_selectors=remove_selectors_list,
+                concurrent_requests=concurrent_requests or 3,
+                request_delay=request_delay or 1.0,
+                timeout=timeout or 30,
+                respect_robots_txt=(
+                    respect_robots_txt if respect_robots_txt is not None else True
+                ),
+            )
+        except ValidationError as exc:
+            errors = exc.errors()
+            detail = errors[0]["msg"] if errors else "Invalid start_url"
+            if isinstance(detail, str) and detail.startswith("Value error, "):
+                detail = detail.removeprefix("Value error, ")
+            raise HTTPException(status_code=422, detail=detail) from exc
 
         final_chunk_size = (
             chunk_size if chunk_size is not None and chunk_size > 0 else 1000
