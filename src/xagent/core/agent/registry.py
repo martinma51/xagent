@@ -209,6 +209,7 @@ class ExecutionRegistry:
         request_interrupt: bool = True,
         reason: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        display_message: str | None = None,
     ) -> ExecutionContext | None:
         handle = self.get(execution_id)
         if handle is None:
@@ -220,6 +221,7 @@ class ExecutionRegistry:
             request_interrupt=request_interrupt,
             reason=reason,
             files=files,
+            display_message=display_message,
         )
 
     async def post_user_message(
@@ -230,6 +232,7 @@ class ExecutionRegistry:
         request_interrupt: bool = True,
         reason: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        display_message: str | None = None,
     ) -> ExecutionContext | None:
         context = await self.inject_user_message(
             execution_id,
@@ -237,6 +240,7 @@ class ExecutionRegistry:
             request_interrupt=request_interrupt,
             reason=reason,
             files=files,
+            display_message=display_message,
         )
         handle = self.get(execution_id)
         if handle is not None and context is not None:

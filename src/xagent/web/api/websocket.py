@@ -2216,6 +2216,12 @@ async def handle_chat_message(
                         request_interrupt=task.status == TaskStatus.RUNNING,
                         reason="new websocket user message",
                         files=live_continuation_attachments or None,
+                        # Carry the user-typed bubble text alongside the
+                        # LLM-augmented execution text. The runner persists
+                        # it onto Message.metadata so the trace callback
+                        # can emit the bubble with the typed content
+                        # rather than the inflated prompt.
+                        display_message=display_user_message,
                     )
                     if not posted:
                         logger.warning(

@@ -294,6 +294,7 @@ class AgentRunner:
         request_interrupt: bool = True,
         reason: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        display_message: str | None = None,
     ) -> ExecutionContext | None:
         context = self.context_manager.get_context(execution_id)
         if context is None:
@@ -306,14 +307,22 @@ class AgentRunner:
             context = ExecutionContext.from_dict(checkpoint["context"])
             self.context_manager.set_context(context)
 
-        # Attach files to the new Message so they survive checkpoint
-        # round-trips (Message.metadata is serialized by ExecutionContext).
-        # The trace callback reads them back from message.metadata when it
-        # emits the user_message trace event.
+        # Attach files (and the user-facing display text when it differs
+        # from the LLM-facing execution text) to the new Message so they
+        # survive checkpoint round-trips: Message.metadata is serialized
+        # by ExecutionContext. The trace callback reads ``display_message``
+        # back from metadata so the chat bubble shows the user-typed text
+        # rather than the LLM-augmented prompt.
+        metadata: dict[str, Any] = {}
         if files:
-            added = context.add_user_message(message, metadata={"files": files})
-        else:
-            added = context.add_user_message(message)
+            metadata["files"] = files
+        if display_message and display_message != message:
+            metadata["display_message"] = display_message
+        added = (
+            context.add_user_message(message, metadata=metadata)
+            if metadata
+            else context.add_user_message(message)
+        )
         # Persist BEFORE emitting the trace so the message is durable even
         # if the trace dispatch fails — the resume path's catch-up logic
         # in TraceEventCallback.on_run_start will replay any missed events.
@@ -322,6 +331,9 @@ class AgentRunner:
             context=context,
             label="user_message_injected",
         )
+        # Snapshot the watermark BEFORE the callback so we can detect a
+        # change (see comment below) and persist it.
+        watermark_before = self._read_trace_watermark(context)
         await self._dispatch_callback(
             "on_user_message_posted",
             runner=self,
@@ -329,9 +341,34 @@ class AgentRunner:
             message=added,
             files=files,
         )
+        # Re-persist when the trace callback advanced the watermark —
+        # without this a worker crash between trace emission and the next
+        # checkpoint would let the resume path replay the same user_message
+        # event because the watermark was still living only in memory.
+        watermark_after = self._read_trace_watermark(context)
+        if watermark_after and watermark_after != watermark_before:
+            await self._persist_injected_context(
+                execution_id=execution_id,
+                context=context,
+                label="user_message_trace_watermark",
+            )
         if request_interrupt:
             self.pause(execution_id, reason=reason or "new user message")
         return context
+
+    @staticmethod
+    def _read_trace_watermark(context: ExecutionContext) -> str | None:
+        """Read the user-message trace watermark off context metadata, if any.
+
+        Kept in-runner so we don't import the tracing module (which would
+        create a cycle) — the key is a stable contract spelled out in
+        ``core.agent.tracing.TRACE_WATERMARK_KEY``.
+        """
+        metadata = getattr(context, "metadata", None)
+        if not isinstance(metadata, dict):
+            return None
+        value = metadata.get("_user_message_trace_watermark")
+        return value if isinstance(value, str) and value else None
 
     async def post_user_message(
         self,
@@ -341,6 +378,7 @@ class AgentRunner:
         request_interrupt: bool = True,
         reason: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        display_message: str | None = None,
     ) -> ExecutionContext | None:
         """Alias for external callers to inject a user message into an execution.
 
@@ -353,6 +391,7 @@ class AgentRunner:
             request_interrupt=request_interrupt,
             reason=reason,
             files=files,
+            display_message=display_message,
         )
 
     async def _build_context(

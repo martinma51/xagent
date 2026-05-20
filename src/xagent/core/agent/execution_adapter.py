@@ -160,6 +160,7 @@ class AgentExecutionAdapter:
         request_interrupt: bool = True,
         reason: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        display_message: str | None = None,
     ) -> bool:
         if self.registry.get(execution_id) is None:
             runner, execution_type = self._build_runner()
@@ -177,6 +178,7 @@ class AgentExecutionAdapter:
             request_interrupt=request_interrupt,
             reason=reason,
             files=files,
+            display_message=display_message,
         )
         return context is not None
 

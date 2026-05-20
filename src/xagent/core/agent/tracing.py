@@ -94,18 +94,23 @@ class TraceEventCallback:
         if tracer is None or not callable(getattr(tracer, "trace_event", None)):
             return
 
+        # ``Message.content`` holds the LLM-facing execution text (with
+        # any uploaded-files context appended). The chat bubble must
+        # render the user-typed string instead, so prefer
+        # ``metadata['display_message']`` when the runner stashed one.
         content = getattr(message, "content", None) or ""
+        bubble_text = self._display_message_from(message) or content
         resolved_files = files or self._files_from_message(message)
         # File-only continuation: user uploaded files without typing.
         # ``inject_user_message`` still added the (empty-content) Message
         # so the chip survives checkpoints — we mirror that here and let
         # the frontend's ``has_files`` fallback render the bubble.
-        if not content and not resolved_files:
+        if not bubble_text and not resolved_files:
             return
         await self._emit_user_message_trace(
             tracer=tracer,
             context=context,
-            message=content,
+            message=bubble_text,
             files=resolved_files,
         )
         self._mark_traced(context, message)
@@ -187,6 +192,9 @@ class TraceEventCallback:
             if getattr(message, "role", None) != "user":
                 continue
             content = getattr(message, "content", None) or ""
+            # Same display vs execution split as on_user_message_posted —
+            # see the comment there.
+            bubble_text = self._display_message_from(message) or content
             ts = self._message_timestamp_iso(message)
             if watermark and ts and ts <= watermark:
                 continue
@@ -201,12 +209,12 @@ class TraceEventCallback:
             # File-only message (empty content + non-empty files) is a real
             # turn — the persist layer keeps the row when attachments are
             # present, and the live bubble should match.
-            if not content and not files:
+            if not bubble_text and not files:
                 continue
             await self._emit_user_message_trace(
                 tracer=tracer,
                 context=context,
-                message=content,
+                message=bubble_text,
                 files=files,
             )
             self._mark_traced(context, message)
@@ -266,6 +274,19 @@ class TraceEventCallback:
         if not isinstance(metadata, dict):
             return []
         return project_file_info_to_chip(metadata.get("files"))
+
+    @staticmethod
+    def _display_message_from(message: Any) -> str | None:
+        """Return ``Message.metadata['display_message']`` if it's a non-empty
+        string, else None. The runner sets it when the LLM-facing execution
+        text differs from the user-typed bubble text (see
+        ``runner.inject_user_message``).
+        """
+        metadata = getattr(message, "metadata", None)
+        if not isinstance(metadata, dict):
+            return None
+        value = metadata.get("display_message")
+        return value if isinstance(value, str) and value else None
 
     def _context_payload(self, context: Any) -> dict[str, Any] | None:
         to_dict = getattr(context, "to_dict", None)

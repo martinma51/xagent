@@ -208,6 +208,7 @@ class AgentService:
         request_interrupt: bool = True,
         reason: str | None = None,
         files: list[dict[str, Any]] | None = None,
+        display_message: str | None = None,
     ) -> bool:
         if self._execution_adapter is None:
             self._execution_adapter = self._build_execution_adapter()
@@ -218,6 +219,7 @@ class AgentService:
                 request_interrupt=request_interrupt,
                 reason=reason,
                 files=files,
+                display_message=display_message,
             )
         )
 
