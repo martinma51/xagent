@@ -24,6 +24,38 @@ logger = logging.getLogger(__name__)
 # Context variable for auto-registration mode
 _auto_register = contextvars.ContextVar("_auto_register", default=False)
 
+# Directory names to skip when walking user-controlled trees. Hidden
+# subdirs (anything starting with ``.``) are also pruned.
+_IGNORED_DIR_NAMES: frozenset[str] = frozenset({"__pycache__", "node_modules"})
+
+
+def _scan_user_files(root: Path) -> set[Path]:
+    """Return every regular file under *root*, with ignored subtrees pruned.
+
+    Uses ``os.walk`` and trims ``dirnames`` in-place so we do **not**
+    descend into hidden subdirs, ``__pycache__``, or ``node_modules`` —
+    cheaper than ``rglob`` + filter, which still traverses the entire
+    tree before discarding it. Hidden files are skipped too.
+
+    Returns absolute :class:`Path` objects when *root* is absolute, so
+    callers can diff snapshots across the same root without resolving
+    each entry inside the loop.
+    """
+    if not root.exists():
+        return set()
+    results: set[Path] = set()
+    for dir_path, dir_names, file_names in os.walk(root):
+        dir_names[:] = [
+            d
+            for d in dir_names
+            if not d.startswith(".") and d not in _IGNORED_DIR_NAMES
+        ]
+        for name in file_names:
+            if name.startswith("."):
+                continue
+            results.add(Path(dir_path) / name)
+    return results
+
 
 @dataclass
 class AgentContext:
@@ -711,6 +743,50 @@ class TaskWorkspace:
                         f"Failed to auto-register file {file_path}: {e}. "
                         f"File exists on disk but is not in database - will require backfill."
                     )
+
+    @contextmanager
+    def backfill_files_from_cwd(
+        self, working_directory: str | Path
+    ) -> "Iterator[TaskWorkspace]":
+        """Manually register files created in *working_directory* after the body runs.
+
+        The executor's ``working_directory`` is sometimes outside
+        ``workspace_dir`` (e.g. workspace id ``"67"`` but executor cwd
+        ``"web_task_67/output"``). When that happens, ``auto_register_files``
+        — which only scans ``workspace_dir`` — misses files saved through
+        raw fs IO (``fs.writeFileSync``, ``pptxgenjs.writeFile``, openpyxl,
+        etc.). This helper snapshots *working_directory* before/after the
+        body and manually registers any new files.
+
+        **No-op fast path:** when *working_directory* is already inside
+        the workspace tree, ``auto_register_files`` will see the new
+        files on its own scan; we skip the manual snapshot entirely to
+        avoid double-walking the same tree.
+
+        Centralised here so the executor adapters (python_executor,
+        javascript_executor, …) share one implementation instead of
+        duplicating the scan + diff + register loop.
+        """
+        wd_path = Path(working_directory).resolve()
+        ws_root = self.workspace_dir.resolve()
+
+        # If the executor's cwd already lives under workspace_dir,
+        # auto_register_files()'s own walk covers it — don't double-scan.
+        if wd_path == ws_root or wd_path.is_relative_to(ws_root):
+            yield self
+            return
+
+        files_before = _scan_user_files(wd_path)
+        try:
+            yield self
+        finally:
+            files_after = _scan_user_files(wd_path)
+            for fp in files_after - files_before:
+                try:
+                    self.register_file(str(fp))
+                    logger.info("backfill: registered %s", fp)
+                except Exception as exc:
+                    logger.warning("backfill: failed to register %s: %s", fp, exc)
 
     def _scan_all_files(self) -> set[Path]:
         """Scan all files in workspace and return as set."""

@@ -86,56 +86,19 @@ class PythonExecutorTool(AbstractBaseTool):
 
         # Execute code within auto_register context.
         #
-        # The python_executor's `working_directory` is not always the same as
-        # `self._workspace.workspace_dir` — they can diverge when the agent
-        # workspace is keyed by raw task_id ("67") but the executor cwd lands
-        # in the per-user output tree ("web_task_67/output"). In that case the
-        # built-in `auto_register_files()` scan (which walks workspace_dir)
-        # would miss files saved by openpyxl/pptxgenjs/etc. via raw fs IO.
-        #
-        # Belt-and-braces: snapshot the executor's actual working_directory
-        # before/after the call and manually register any new files. This is
-        # a no-op when the dirs already coincide (file_id lookup deduplicates).
+        # ``working_directory`` is not always identical to
+        # ``self._workspace.workspace_dir`` — they diverge when the agent
+        # workspace is keyed by raw task_id ("67") but the executor cwd
+        # lands in the per-user output tree ("web_task_67/output").
+        # ``auto_register_files`` only walks workspace_dir, so it would
+        # miss files saved by openpyxl / pptxgenjs / etc. via raw fs IO.
+        # The shared ``backfill_files_from_cwd`` helper on TaskWorkspace
+        # snapshots cwd before/after and registers the diff. It's a
+        # no-op fast-path when cwd is already inside workspace_dir.
         if self._workspace and working_directory:
-            import logging as _logging
-
-            _log = _logging.getLogger(__name__)
-            from pathlib import Path as _Path
-
-            def _scan_cwd() -> set:
-                wd = _Path(working_directory)
-                if not wd.exists():
-                    return set()
-                # Only filter on the path SEGMENTS BELOW working_directory.
-                # We cannot reject paths whose parents are hidden (e.g.
-                # `.xagent_data`) because the whole tree lives under one.
-                wd_resolved = wd.resolve()
-                results = set()
-                for p in wd.rglob("*"):
-                    if not p.is_file():
-                        continue
-                    try:
-                        rel_parts = p.resolve().relative_to(wd_resolved).parts
-                    except ValueError:
-                        continue
-                    if any(part.startswith(".") for part in rel_parts):
-                        continue
-                    if "__pycache__" in rel_parts or "node_modules" in rel_parts:
-                        continue
-                    results.add(p)
-                return results
-
-            files_before = _scan_cwd()
-            with self._workspace.auto_register_files():
-                result = executor.execute_code(full_code, exec_args.capture_output)
-            files_after = _scan_cwd()
-            new_files = files_after - files_before
-            for fp in new_files:
-                try:
-                    self._workspace.register_file(str(fp))
-                    _log.info(f"python_executor: backfill-registered new file {fp}")
-                except Exception as e:
-                    _log.warning(f"python_executor: failed to register {fp}: {e}")
+            with self._workspace.backfill_files_from_cwd(working_directory):
+                with self._workspace.auto_register_files():
+                    result = executor.execute_code(full_code, exec_args.capture_output)
         else:
             result = executor.execute_code(full_code, exec_args.capture_output)
 

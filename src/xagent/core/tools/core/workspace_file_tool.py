@@ -529,13 +529,12 @@ class WorkspaceFileOperations:
         stat = resolved_path.stat()
 
         # Look up the registered file_id (UUID) so the LLM can build a chip
-        # link `[name](file:UUID)` in its final answer. If the file was not
-        # auto-registered, this returns None (and the chip won't render).
-        file_id: Optional[str] = None
-        try:
-            file_id = self.workspace.get_file_id_from_path(str(resolved_path))
-        except Exception:
-            file_id = None
+        # link `[name](file:UUID)` in its final answer. ``get_file_id_from_path``
+        # already returns None on any internal lookup failure, so no outer
+        # try/except is needed here.
+        file_id: Optional[str] = self.workspace.get_file_id_from_path(
+            str(resolved_path)
+        )
 
         return FileInfo(
             name=resolved_path.name,

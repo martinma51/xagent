@@ -81,51 +81,18 @@ class JavaScriptExecutorTool(AbstractBaseTool):
         executor = JavaScriptExecutorCore(working_directory)
 
         # Execute code within auto_register context.
-        # Same caveat as python_executor: the executor's working_directory may
-        # not be inside `self._workspace.workspace_dir` (e.g. when agent
-        # workspace id is "67" but executor cwd is "web_task_67/output"). In
-        # that case the built-in scan misses files written via `fs.writeFileSync`,
-        # `pptxgenjs.writeFile`, etc. Belt-and-braces: scan the actual cwd
-        # before/after the call and manually register new files.
+        # The executor's working_directory may sit outside
+        # ``self._workspace.workspace_dir`` (e.g. workspace id "67" but
+        # executor cwd "web_task_67/output"), in which case
+        # ``auto_register_files`` would miss files saved through raw fs
+        # IO (``fs.writeFileSync``, ``pptxgenjs.writeFile``, …). The shared
+        # ``backfill_files_from_cwd`` helper on TaskWorkspace handles the
+        # belt-and-braces snapshot — and is a no-op fast-path when the
+        # cwd is already inside workspace_dir, so we don't double-scan.
         if self._workspace and working_directory:
-            import logging as _logging
-
-            _log = _logging.getLogger(__name__)
-            from pathlib import Path as _Path
-
-            def _scan_cwd() -> set:
-                wd = _Path(working_directory)
-                if not wd.exists():
-                    return set()
-                # Filter on path segments BELOW working_directory only — the
-                # whole tree may live under a hidden parent like `.xagent_data`.
-                wd_resolved = wd.resolve()
-                results = set()
-                for p in wd.rglob("*"):
-                    if not p.is_file():
-                        continue
-                    try:
-                        rel_parts = p.resolve().relative_to(wd_resolved).parts
-                    except ValueError:
-                        continue
-                    if any(part.startswith(".") for part in rel_parts):
-                        continue
-                    if "__pycache__" in rel_parts or "node_modules" in rel_parts:
-                        continue
-                    results.add(p)
-                return results
-
-            files_before = _scan_cwd()
-            with self._workspace.auto_register_files():
-                result = executor.execute_code(exec_args.code, packages=pkg_list)
-            files_after = _scan_cwd()
-            new_files = files_after - files_before
-            for fp in new_files:
-                try:
-                    self._workspace.register_file(str(fp))
-                    _log.info(f"javascript_executor: backfill-registered new file {fp}")
-                except Exception as e:
-                    _log.warning(f"javascript_executor: failed to register {fp}: {e}")
+            with self._workspace.backfill_files_from_cwd(working_directory):
+                with self._workspace.auto_register_files():
+                    result = executor.execute_code(exec_args.code, packages=pkg_list)
         else:
             result = executor.execute_code(exec_args.code, packages=pkg_list)
 
