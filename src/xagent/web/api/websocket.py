@@ -294,6 +294,27 @@ def _normalize_attachments_for_persistence(
     return project_file_info_to_chip(file_info_list)
 
 
+def _attachment_fingerprint(attachments: Any) -> str:
+    """Order-independent fingerprint of a chip-shaped attachment list.
+
+    Used by the replay dedup key so two user turns with the same typed
+    text but different uploaded files don't collapse into one. We
+    fingerprint on ``file_id`` only — the field is stable across the
+    trace event payload and the persisted ``TaskChatMessage.attachments``
+    column, and the order of items isn't meaningful for identity.
+    """
+    if not isinstance(attachments, list):
+        return ""
+    file_ids: list[str] = []
+    for item in attachments:
+        if not isinstance(item, dict):
+            continue
+        file_id = item.get("file_id")
+        if isinstance(file_id, str) and file_id.strip():
+            file_ids.append(file_id.strip())
+    return "|".join(sorted(file_ids))
+
+
 def create_stream_event(
     event_type: str,
     task_id: Union[int, str],
@@ -2793,7 +2814,12 @@ async def send_historical_data_as_stream(
             historical_path_to_file_id: Dict[str, str] = {}
             normalized_trace_data_by_event_id: Dict[str, Any] = {}
             task_user_id = int(cast(Any, task.user_id))
-            trace_message_keys: set[tuple[str, str]] = set()
+            # Dedup key for "is this chat_messages row already covered by a
+            # trace event?". Includes an attachment fingerprint so two
+            # user turns with the same typed text but different uploaded
+            # files no longer collapse into one — the second row used to
+            # be dropped and its file chips disappeared on reload.
+            trace_message_keys: set[tuple[str, str, str]] = set()
 
             for trace_event in trace_events:
                 normalized_event_data = trace_event.data
@@ -2817,10 +2843,18 @@ async def send_historical_data_as_stream(
                         "message"
                     ) or normalized_event_data.get("content")
                     if isinstance(content, str) and content.strip():
+                        event_attachments = normalized_event_data.get(
+                            "files"
+                        ) or normalized_event_data.get("attachments")
+                        attachment_key = _attachment_fingerprint(event_attachments)
                         if trace_event.event_type == "user_message":
-                            trace_message_keys.add(("user", content.strip()))
+                            trace_message_keys.add(
+                                ("user", content.strip(), attachment_key)
+                            )
                         elif trace_event.event_type in {"agent_message", "ai_message"}:
-                            trace_message_keys.add(("assistant", content.strip()))
+                            trace_message_keys.add(
+                                ("assistant", content.strip(), attachment_key)
+                            )
 
             for trace_event in trace_events:
                 normalized_event_data = normalized_trace_data_by_event_id.get(
@@ -2874,7 +2908,11 @@ async def send_historical_data_as_stream(
                 # turn (user uploaded files without typing) and must be kept.
                 if not content and not row_attachments:
                     continue
-                if content and (role, content) in trace_message_keys:
+                if (
+                    content
+                    and (role, content, _attachment_fingerprint(row_attachments))
+                    in trace_message_keys
+                ):
                     continue
 
                 if role == "user":
