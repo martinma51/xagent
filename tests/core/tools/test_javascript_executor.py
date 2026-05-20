@@ -91,18 +91,23 @@ console.log('Sum:', sum);
 
 
 class TestPptxgenjsWarningInterception:
-    """The JS wrapper rewrites pptxgenjs warn-only failures into throws.
+    """The JS wrapper converts pptxgenjs warn-only failures into hard fails.
 
     pptxgenjs's ``addTable``/``addImage``/etc. log to stdout with
     ``"<method>: <description>"`` when an argument is malformed, then
     keep going — leaving a broken ``.pptx`` on disk while node still
-    exits 0. The wrapper that ``execute_code`` puts around user code
-    intercepts ``console.log``, matches the pptxgenjs API method
-    prefix, and throws — so node exits non-zero and the framework's
-    existing hard-failure path surfaces the error to the agent.
+    exits 0. When the caller requested ``pptxgenjs`` we intercept
+    ``console.log`` in the wrapper: set a wrapper-scoped flag, throw,
+    and after the user-code ``try`` block re-check the flag and
+    ``process.exit(1)`` so a user-level ``try/catch`` around the
+    pptxgenjs call cannot suppress the failure.
+
+    The interceptor is GATED on `packages` containing pptxgenjs so a
+    script that doesn't request it can't be misclassified by a
+    pptxgenjs-shaped log line.
     """
 
-    def test_pptxgenjs_warning_text_in_user_code_triggers_failure(self):
+    def test_pptxgenjs_warning_in_user_code_triggers_failure(self):
         """A script that just ``console.log``s the warning text is enough —
         the wrapper turns it into a throw without needing real pptxgenjs."""
         executor = JavaScriptExecutorCore()
@@ -112,11 +117,9 @@ class TestPptxgenjsWarningInterception:
             "A row should be an array of cells.'"
             ");"
         )
-        result = executor.execute_code(code)
+        result = executor.execute_code(code, packages=["pptxgenjs"])
 
         assert result["success"] is False
-        # The thrown Error's message includes both our framing and the
-        # original pptxgenjs warning text.
         assert "pptxgenjs reported a validation problem" in result["error"]
         assert "addTable: tableRows has a bad row" in result["error"]
 
@@ -124,9 +127,23 @@ class TestPptxgenjsWarningInterception:
         """addText/addImage/addShape/writeFile prefixes all match."""
         for prefix in ("addText", "addImage", "addShape", "writeFile"):
             executor = JavaScriptExecutorCore()
-            result = executor.execute_code(f"console.log('{prefix}: something wrong');")
+            result = executor.execute_code(
+                f"console.log('{prefix}: something wrong');",
+                packages=["pptxgenjs"],
+            )
             assert result["success"] is False, prefix
             assert prefix in result["error"], prefix
+
+    def test_generic_prefixes_no_longer_trigger_failure(self):
+        """rogercloud comment 1: bare ``write:``/``stream:`` are off the
+        allow-list now — ordinary user logs must not collide."""
+        for line in ("write: complete", "stream: ready"):
+            executor = JavaScriptExecutorCore()
+            result = executor.execute_code(
+                f"console.log('{line}');", packages=["pptxgenjs"]
+            )
+            assert result["success"] is True, line
+            assert line in result["output"], line
 
     def test_unrelated_colon_lines_do_not_trigger_failure(self):
         """User code logging `foo: bar` style strings stays a clean success."""
@@ -144,7 +161,9 @@ class TestPptxgenjsWarningInterception:
     def test_method_prefix_requires_colon_space_separator(self):
         """`addTable:nodescription` (no space) is not matched."""
         executor = JavaScriptExecutorCore()
-        result = executor.execute_code("console.log('addTable:no-space');")
+        result = executor.execute_code(
+            "console.log('addTable:no-space');", packages=["pptxgenjs"]
+        )
         assert result["success"] is True
         assert "addTable:no-space" in result["output"]
 
@@ -155,6 +174,45 @@ class TestPptxgenjsWarningInterception:
         assert result["success"] is True
         assert "all good" in result["output"]
         assert result["error"] == ""
+
+    def test_interception_gated_on_pptxgenjs_request(self):
+        """rogercloud comment 1: when the caller didn't ask for pptxgenjs,
+        even an exact ``addTable: ...`` line must NOT be flagged. The
+        detector belongs only to executions that actually load the library.
+        """
+        executor = JavaScriptExecutorCore()
+        result = executor.execute_code(
+            "console.log('addTable: tableRows has a bad row.');"
+        )
+        assert result["success"] is True
+        assert "addTable: tableRows has a bad row." in result["output"]
+
+    def test_user_try_catch_cannot_suppress_failure(self):
+        """rogercloud comment 2: a user-level try/catch around the
+        pptxgenjs call must NOT be able to swallow the validation
+        failure. The wrapper-scoped flag check runs after the user try
+        block and exits the process from outside user code's reach.
+        """
+        executor = JavaScriptExecutorCore()
+        # Simulate pptxgenjs's behaviour: the offending method only
+        # ``console.log``s and returns normally. Wrap the call in a
+        # broad try/catch so the injected throw is consumed.
+        code = (
+            "try {"
+            "  console.log('addTable: tableRows has a bad row.');"
+            "  console.log('about to write the malformed pptx');"
+            "} catch (e) {"
+            "  console.log('user swallowed the throw and kept going');"
+            "}"
+        )
+        result = executor.execute_code(code, packages=["pptxgenjs"])
+
+        # The wrapper-level flag check still fires after the user try
+        # block returns, so the tool reports failure even though user
+        # code didn't propagate the throw.
+        assert result["success"] is False
+        assert "pptxgenjs reported a validation problem" in result["error"]
+        assert "addTable: tableRows has a bad row" in result["error"]
 
 
 # Parametrized end-to-end coverage of every failure mode the executor is
