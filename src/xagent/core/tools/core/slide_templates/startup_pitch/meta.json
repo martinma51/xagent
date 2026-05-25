@@ -1,0 +1,74 @@
+{
+  "id": "startup_pitch",
+  "name": "Startup Pitch",
+  "description": "Stark black-and-white with a single yellow accent and asymmetric grid — for seed pitches, demo days, and founder updates.",
+  "category": "Pitch",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "company":  { "type": "text", "max_length": 40,  "required": true,  "hint": "Company name." },
+        "tagline":  { "type": "text", "max_length": 80,  "required": true,  "hint": "One-liner that explains what you do." },
+        "stage":    { "type": "text", "max_length": 24,  "required": false, "hint": "e.g. 'SEED · 2026' or 'SERIES A'." },
+        "deck_for": { "type": "text", "max_length": 40,  "required": false, "hint": "e.g. 'For Acme Capital'." }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_problem.html",
+      "layout": "problem",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 60,  "required": true,  "hint": "Default 'The problem'." },
+        "headline":  { "type": "text", "max_length": 100, "required": true,  "hint": "The pain in one sentence." },
+        "body":      { "type": "text", "max_length": 280, "required": true },
+        "stat":      { "type": "text", "max_length": 12,  "required": false, "hint": "Optional big number." },
+        "stat_label": { "type": "text", "max_length": 60, "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_solution.html",
+      "layout": "solution",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 60,  "required": true },
+        "headline":  { "type": "text", "max_length": 100, "required": true },
+        "feature_1": { "type": "text", "max_length": 80,  "required": true },
+        "feature_2": { "type": "text", "max_length": 80,  "required": true },
+        "feature_3": { "type": "text", "max_length": 80,  "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_market.html",
+      "layout": "market_size",
+      "slots": {
+        "heading":  { "type": "text", "max_length": 60,  "required": true,  "hint": "Default 'Market size'." },
+        "tam":      { "type": "text", "max_length": 12,  "required": true },
+        "tam_label":{ "type": "text", "max_length": 30,  "required": true,  "hint": "e.g. 'TAM'." },
+        "sam":      { "type": "text", "max_length": 12,  "required": true },
+        "sam_label":{ "type": "text", "max_length": 30,  "required": true,  "hint": "e.g. 'SAM'." },
+        "som":      { "type": "text", "max_length": 12,  "required": true },
+        "som_label":{ "type": "text", "max_length": 30,  "required": true,  "hint": "e.g. 'SOM'." },
+        "note":     { "type": "text", "max_length": 180, "required": false }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_ask.html",
+      "layout": "ask",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 40,  "required": true,  "hint": "Default 'The ask'." },
+        "amount":    { "type": "text", "max_length": 16,  "required": true,  "hint": "e.g. '$3M'." },
+        "use_1":     { "type": "text", "max_length": 60,  "required": true },
+        "use_2":     { "type": "text", "max_length": 60,  "required": true },
+        "use_3":     { "type": "text", "max_length": 60,  "required": true },
+        "contact":   { "type": "text", "max_length": 60,  "required": true }
+      }
+    }
+  ]
+}

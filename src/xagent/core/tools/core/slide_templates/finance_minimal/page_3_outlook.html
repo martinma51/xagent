@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" data-template="finance_minimal" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ffffff; color: #0c0c0c; position: relative; overflow: hidden; }
+  .top-line    { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #b8975c; }
+  .bottom-line { position: absolute; left: 80px; right: 80px; bottom: 60px; height: 1px; background: #b8975c; }
+  .firm-mark { position: absolute; left: 80px; top: 76px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.32em;
+               color: #b8975c; background: #ffffff; padding-right: 16px; }
+  .page-tag  { position: absolute; right: 80px; top: 76px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.32em;
+               color: #888; background: #ffffff; padding-left: 16px; }
+
+  .section-num { position: absolute; left: 80px; top: 120px;
+                 font-family: 'Libre Caslon Text', serif; font-style: italic;
+                 font-size: 18px; color: #b8975c; }
+  .heading { position: absolute; left: 80px; top: 150px; width: 700px;
+             font-family: 'Libre Caslon Text', Georgia, serif;
+             font-size: 56px; line-height: 1.08; font-weight: 700; color: #0c0c0c; letter-spacing: -0.01em; }
+  .lead { position: absolute; left: 80px; top: 320px; width: 640px;
+          font-family: 'Libre Caslon Text', serif; font-style: italic;
+          font-size: 20px; line-height: 1.65; color: #2a2a2a; font-weight: 400; }
+
+  .guide-frame { position: absolute; right: 80px; top: 150px; width: 360px; padding: 36px 32px;
+                 border: 1px solid #b8975c; background-color: #fdfaf3; }
+  .guide-label { font-size: 11px; font-weight: 700; letter-spacing: 0.3em; color: #b8975c; text-transform: uppercase; }
+  .guide-rule  { width: 36px; height: 2px; background: #b8975c; margin: 14px 0 22px; }
+  .guide-value { font-family: 'Libre Caslon Text', serif;
+                 font-size: 52px; line-height: 1.08; font-weight: 700; color: #0c0c0c; letter-spacing: -0.02em; }
+  .guide-note  { font-size: 14px; line-height: 1.55; color: #555; margin-top: 24px;
+                 padding-top: 18px; border-top: 1px solid #e8e0d0; font-style: italic; }
+
+  .page-num { position: absolute; right: 80px; bottom: 32px;
+              font-family: 'Libre Caslon Text', serif; font-style: italic;
+              font-size: 13px; color: #888; }
+</style>
+</head>
+<body>
+  <div class="top-line"></div>
+  <div class="bottom-line"></div>
+  <div class="firm-mark">HAWTHORNE</div>
+  <div class="page-tag">OUTLOOK · 04</div>
+  <div class="section-num">iii.</div>
+  <div class="heading" data-slot="heading">Outlook for the remainder of the year</div>
+  <div class="lead"    data-slot="lead">A measured paragraph on the shape of the next two quarters — what we are confident about, what we are watching, and how the guidance reflects both.</div>
+
+  <div class="guide-frame">
+    <div class="guide-label" data-slot="guide_label">FY 2026 GUIDANCE</div>
+    <div class="guide-rule"></div>
+    <div class="guide-value" data-slot="guide_value">$182M–$195M</div>
+    <div class="guide-note"  data-slot="guide_note">Range reflects ordinary seasonality and an additional buffer for Q4 macro uncertainty.</div>
+  </div>
+
+  <div class="page-num">— 04 —</div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-template="bold_orange" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0a0a0a; color: #ffffff; position: relative; overflow: hidden; }
+  .block-orange { position: absolute; right: 0; top: 0; width: 360px; height: 720px;
+                  background-color: #ff6a1f; }
+  .block-stripe { position: absolute; right: 360px; top: 0; width: 12px; height: 720px;
+                  background-color: #1a1a1a; }
+  .eyebrow { position: absolute; left: 80px; top: 80px; padding: 6px 14px;
+             background-color: #ff6a1f; color: #0a0a0a;
+             font-size: 12px; font-weight: 700; letter-spacing: 0.22em; }
+  .title { position: absolute; left: 80px; top: 200px; width: 760px;
+           font-family: 'Archivo Black', 'Arial Black', sans-serif;
+           font-size: 116px; line-height: 0.95; color: #ffffff;
+           letter-spacing: -0.02em; text-transform: uppercase; }
+  .title .accent { color: #ff6a1f; }
+  .subtitle { position: absolute; left: 80px; top: 530px; width: 720px;
+              font-size: 18px; line-height: 1.55; color: #b4b4b4; font-weight: 400; }
+  .author { position: absolute; left: 80px; bottom: 64px; font-size: 14px; font-weight: 600; color: #ffffff;
+            letter-spacing: 0.02em; }
+  .date   { position: absolute; left: 80px; bottom: 40px; font-size: 13px; color: #888; letter-spacing: 0.1em; }
+  .corner-mark { position: absolute; right: 80px; top: 80px;
+                 font-family: 'Archivo Black', sans-serif; font-size: 48px; color: #0a0a0a;
+                 line-height: 1; }
+</style>
+</head>
+<body>
+  <div class="block-orange"></div>
+  <div class="block-stripe"></div>
+  <div class="corner-mark">◯</div>
+  <div class="eyebrow" data-slot="eyebrow">ALL HANDS · Q4</div>
+  <div class="title" data-slot="title">Ship it like we mean it</div>
+  <div class="subtitle" data-slot="subtitle">Short framing line that explains why the room is here today and what we are about to commit to.</div>
+  <div class="author" data-slot="author">Speaker Name · Role</div>
+  <div class="date"   data-slot="date">2026.05.25</div>
+</body>
+</html>

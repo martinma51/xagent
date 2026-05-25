@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-template="finance_minimal" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ffffff; color: #0c0c0c; position: relative; overflow: hidden; }
+  .top-line    { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #b8975c; }
+  .bottom-line { position: absolute; left: 80px; right: 80px; bottom: 60px; height: 1px; background: #b8975c; }
+  .firm-mark { position: absolute; left: 80px; top: 76px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.32em;
+               color: #b8975c; background: #ffffff; padding-right: 16px; }
+  .page-tag  { position: absolute; right: 80px; top: 76px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.32em;
+               color: #888; background: #ffffff; padding-left: 16px; }
+
+  .section-num { position: absolute; left: 80px; top: 120px;
+                 font-family: 'Libre Caslon Text', serif; font-style: italic;
+                 font-size: 18px; color: #b8975c; }
+  .heading { position: absolute; left: 80px; top: 150px; width: 1120px;
+             font-family: 'Libre Caslon Text', Georgia, serif;
+             font-size: 52px; line-height: 1.1; font-weight: 700; color: #0c0c0c; letter-spacing: -0.01em; }
+
+  .grid { position: absolute; left: 80px; right: 80px; top: 290px;
+          display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+          border-top: 1px solid #d9c89f; border-left: 1px solid #d9c89f; }
+  .cell { padding: 32px 36px; border-right: 1px solid #d9c89f; border-bottom: 1px solid #d9c89f;
+          display: flex; flex-direction: column; justify-content: space-between; min-height: 140px; }
+  .k-label { font-size: 12px; font-weight: 600; letter-spacing: 0.2em; color: #888;
+             text-transform: uppercase; }
+  .k-value-row { display: flex; align-items: baseline; gap: 16px; }
+  .k-value { font-family: 'Libre Caslon Text', serif;
+             font-size: 56px; line-height: 1; font-weight: 700; color: #0c0c0c; letter-spacing: -0.02em; }
+  .k-delta { font-size: 14px; font-weight: 600; color: #4a8a3a; letter-spacing: 0.02em; }
+  .k-delta.neg { color: #b03030; }
+
+  .page-num { position: absolute; right: 80px; bottom: 32px;
+              font-family: 'Libre Caslon Text', serif; font-style: italic;
+              font-size: 13px; color: #888; }
+</style>
+</head>
+<body>
+  <div class="top-line"></div>
+  <div class="bottom-line"></div>
+  <div class="firm-mark">HAWTHORNE</div>
+  <div class="page-tag">KEY METRICS · 03</div>
+  <div class="section-num">ii.</div>
+  <div class="heading" data-slot="heading">Key performance indicators</div>
+
+  <div class="grid">
+    <div class="cell">
+      <div class="k-label" data-slot="kpi_1_label">Net revenue</div>
+      <div class="k-value-row">
+        <div class="k-value" data-slot="kpi_1">$48.2M</div>
+        <div class="k-delta" data-slot="kpi_1_delta">+12.4% YoY</div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="k-label" data-slot="kpi_2_label">Operating margin</div>
+      <div class="k-value-row">
+        <div class="k-value" data-slot="kpi_2">22.6%</div>
+        <div class="k-delta" data-slot="kpi_2_delta">+180 bps</div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="k-label" data-slot="kpi_3_label">Net retention</div>
+      <div class="k-value-row">
+        <div class="k-value" data-slot="kpi_3">112%</div>
+        <div class="k-delta" data-slot="kpi_3_delta">+4 pts</div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="k-label" data-slot="kpi_4_label">Free cash flow</div>
+      <div class="k-value-row">
+        <div class="k-value" data-slot="kpi_4">$9.1M</div>
+        <div class="k-delta" data-slot="kpi_4_delta">+38% YoY</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-num">— 03 —</div>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-template="product_neon" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+         background-color: #0b031a; color: #ffffff; position: relative; overflow: hidden; }
+  .grad-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                 width: 1000px; height: 1000px;
+                 background: radial-gradient(circle at center, rgba(255, 60, 200, 0.40), transparent 55%);
+                 filter: blur(60px); }
+  .grad-cyan { position: absolute; right: -200px; top: -200px; width: 600px; height: 600px;
+               background: radial-gradient(circle at center, rgba(50, 220, 255, 0.40), transparent 60%);
+               filter: blur(40px); }
+  .grad-violet { position: absolute; left: -200px; bottom: -200px; width: 600px; height: 600px;
+                 background: radial-gradient(circle at center, rgba(140, 80, 255, 0.40), transparent 60%);
+                 filter: blur(40px); }
+
+  .stack { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; }
+  .top-rule { width: 80px; height: 3px; background: linear-gradient(90deg, #ff3cc8, #32dcff);
+              margin: 0 auto 36px; }
+  .headline { font-size: 144px; line-height: 0.95; font-weight: 800; color: #ffffff; letter-spacing: -0.035em; }
+  .headline .accent { background: linear-gradient(90deg, #ff3cc8, #32dcff);
+                      -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tagline  { font-size: 22px; line-height: 1.55; color: #c8b8e0; margin: 36px auto 0;
+              max-width: 700px; font-weight: 500; }
+  .cta { display: inline-block; margin-top: 48px; padding: 22px 44px;
+         background: linear-gradient(90deg, #ff3cc8, #32dcff);
+         color: #0b031a; font-family: 'JetBrains Mono', monospace; font-size: 18px;
+         font-weight: 700; letter-spacing: 0.18em; border-radius: 9999px;
+         box-shadow: 0 12px 40px rgba(255, 60, 200, 0.45); }
+  .contact { position: absolute; left: 0; right: 0; bottom: 64px; text-align: center;
+             font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
+             letter-spacing: 0.18em; color: #c8b8e0; }
+</style>
+</head>
+<body>
+  <div class="grad-cyan"></div>
+  <div class="grad-violet"></div>
+  <div class="grad-center"></div>
+  <div class="stack">
+    <div class="top-rule"></div>
+    <div class="headline" data-slot="headline">It's <span class="accent">live</span>.</div>
+    <div class="tagline"  data-slot="tagline">Closing line. A short invitation to try it, install it, or join the waitlist.</div>
+    <div class="cta" data-slot="cta_label">TRY THE BETA →</div>
+  </div>
+  <div class="contact" data-slot="contact">PRODUCT.EXAMPLE.COM · @PRODUCT</div>
+</body>
+</html>

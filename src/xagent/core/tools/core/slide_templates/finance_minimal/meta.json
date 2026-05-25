@@ -1,0 +1,79 @@
+{
+  "id": "finance_minimal",
+  "name": "Finance Minimal",
+  "description": "Pure white canvas, thin gold rules, and serif numerals — for earnings calls, investor letters, and audit reviews.",
+  "category": "Finance",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "firm":     { "type": "text", "max_length": 60,  "required": false, "hint": "Firm or fund name." },
+        "title":    { "type": "text", "max_length": 80,  "required": true },
+        "period":   { "type": "text", "max_length": 40,  "required": false, "hint": "e.g. 'Q1 2026 RESULTS'." },
+        "subtitle": { "type": "text", "max_length": 160, "required": false },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_summary.html",
+      "layout": "executive_summary",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 60,  "required": true },
+        "bullet_1":  { "type": "text", "max_length": 180, "required": true },
+        "bullet_2":  { "type": "text", "max_length": 180, "required": true },
+        "bullet_3":  { "type": "text", "max_length": 180, "required": true },
+        "bullet_4":  { "type": "text", "max_length": 180, "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_kpis.html",
+      "layout": "kpi_grid",
+      "slots": {
+        "heading":  { "type": "text", "max_length": 60,  "required": true },
+        "kpi_1":    { "type": "text", "max_length": 12,  "required": true },
+        "kpi_1_label": { "type": "text", "max_length": 40, "required": true },
+        "kpi_1_delta": { "type": "text", "max_length": 16, "required": false, "hint": "e.g. '+12% YoY'." },
+        "kpi_2":    { "type": "text", "max_length": 12,  "required": true },
+        "kpi_2_label": { "type": "text", "max_length": 40, "required": true },
+        "kpi_2_delta": { "type": "text", "max_length": 16, "required": false },
+        "kpi_3":    { "type": "text", "max_length": 12,  "required": true },
+        "kpi_3_label": { "type": "text", "max_length": 40, "required": true },
+        "kpi_3_delta": { "type": "text", "max_length": 16, "required": false },
+        "kpi_4":    { "type": "text", "max_length": 12,  "required": true },
+        "kpi_4_label": { "type": "text", "max_length": 40, "required": true },
+        "kpi_4_delta": { "type": "text", "max_length": 16, "required": false }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_outlook.html",
+      "layout": "outlook",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 60,  "required": true },
+        "lead":      { "type": "text", "max_length": 220, "required": true },
+        "guide_label": { "type": "text", "max_length": 40, "required": true, "hint": "e.g. 'FY 2026 GUIDANCE'." },
+        "guide_value": { "type": "text", "max_length": 24, "required": true, "hint": "e.g. '$180M–$195M'." },
+        "guide_note":  { "type": "text", "max_length": 140, "required": false }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true },
+        "tagline":   { "type": "text", "max_length": 120, "required": false },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false },
+        "disclaimer": { "type": "text", "max_length": 240, "required": false }
+      }
+    }
+  ]
+}

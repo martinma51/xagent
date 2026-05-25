@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-template="creative_pastel" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #efeafe; color: #2a1f4a; position: relative; overflow: hidden; }
+  .blob-a { position: absolute; left: -160px; top: -100px; width: 460px; height: 460px;
+            background-color: #c7b8ff; border-radius: 60% 40% 50% 50% / 55% 45% 60% 40%; opacity: 0.9; }
+  .blob-b { position: absolute; right: -120px; top: 80px; width: 380px; height: 380px;
+            background-color: #ffd6e7; border-radius: 50% 50% 40% 60%; opacity: 0.9; }
+  .blob-c { position: absolute; right: 100px; bottom: -180px; width: 360px; height: 360px;
+            background-color: #fff2c2; border-radius: 55% 45% 50% 50%; opacity: 0.95; }
+  .blob-d { position: absolute; left: 220px; bottom: -120px; width: 280px; height: 280px;
+            background-color: #b8eaff; border-radius: 50% 50% 60% 40%; opacity: 0.85; }
+
+  .stack { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); text-align: center; z-index: 5; }
+  .headline { font-family: 'DM Serif Display', Georgia, serif;
+              font-size: 132px; line-height: 0.98; color: #2a1f4a; letter-spacing: -0.02em; }
+  .headline em { font-style: italic; color: #6b4dd9; }
+  .tagline  { font-size: 20px; line-height: 1.55; color: #4d3f74;
+              margin: 36px auto 0; max-width: 720px; }
+  .contacts { margin-top: 48px; display: flex; gap: 16px; justify-content: center; }
+  .contact { padding: 12px 24px; background-color: #ffffff; border-radius: 9999px;
+             font-size: 14px; font-weight: 600; color: #2a1f4a; letter-spacing: 0.04em;
+             box-shadow: 0 4px 16px rgba(42, 31, 74, 0.08); }
+</style>
+</head>
+<body>
+  <div class="blob-a"></div>
+  <div class="blob-b"></div>
+  <div class="blob-c"></div>
+  <div class="blob-d"></div>
+  <div class="stack">
+    <div class="headline" data-slot="headline">let's <em>make</em> it.</div>
+    <div class="tagline"  data-slot="tagline">A friendly closing line — an invitation, a thank-you, or where to follow up next.</div>
+    <div class="contacts">
+      <div class="contact" data-slot="contact_1">hello@studio.com</div>
+      <div class="contact" data-slot="contact_2">@studio.handle</div>
+    </div>
+  </div>
+</body>
+</html>

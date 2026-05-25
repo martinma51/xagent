@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-template="academic_warm" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'EB Garamond', Georgia, serif;
+         background-color: #f1e8d8; color: #2b1d0e; position: relative; overflow: hidden; }
+  .frame { position: absolute; left: 60px; right: 60px; top: 60px; bottom: 60px;
+           border: 1.5px solid #7c5a2a; }
+  .inner-rule { position: absolute; left: 80px; right: 80px; top: 80px;
+                height: 1px; background: #7c5a2a; opacity: 0.4; }
+  .inner-rule-bottom { position: absolute; left: 80px; right: 80px; bottom: 80px;
+                       height: 1px; background: #7c5a2a; opacity: 0.4; }
+
+  .institution { position: absolute; left: 0; right: 0; top: 100px; text-align: center;
+                 font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+                 letter-spacing: 0.32em; color: #7c5a2a; text-transform: uppercase; }
+  .ornament { position: absolute; left: 0; right: 0; top: 200px; text-align: center;
+              font-family: 'EB Garamond', serif; font-size: 36px; color: #7c5a2a; }
+  .title { position: absolute; left: 100px; right: 100px; top: 250px; text-align: center;
+           font-size: 72px; line-height: 1.1; font-weight: 500; color: #2b1d0e; letter-spacing: -0.005em; }
+  .title em { font-style: italic; color: #7c5a2a; }
+  .subtitle { position: absolute; left: 160px; right: 160px; top: 430px; text-align: center;
+              font-style: italic; font-size: 22px; line-height: 1.5; color: #5a4a32; font-weight: 400; }
+  .author { position: absolute; left: 0; right: 0; bottom: 160px; text-align: center;
+            font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+            letter-spacing: 0.18em; color: #2b1d0e; text-transform: uppercase; }
+  .advisor { position: absolute; left: 0; right: 0; bottom: 130px; text-align: center;
+             font-style: italic; font-size: 16px; color: #5a4a32; }
+  .date { position: absolute; left: 0; right: 0; bottom: 110px; text-align: center;
+          font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 500;
+          letter-spacing: 0.2em; color: #7c5a2a; }
+</style>
+</head>
+<body>
+  <div class="frame"></div>
+  <div class="inner-rule"></div>
+  <div class="inner-rule-bottom"></div>
+  <div class="institution" data-slot="institution">— University of Example · Department of Studies —</div>
+  <div class="ornament">❦</div>
+  <div class="title" data-slot="title">On the <em>quiet</em> mechanics of meaning</div>
+  <div class="subtitle" data-slot="subtitle">A reading of three primary sources and what they together suggest about the question at hand.</div>
+  <div class="author" data-slot="author">Author Name</div>
+  <div class="advisor" data-slot="advisor">Advised by Prof. Reader</div>
+  <div class="date"   data-slot="date">MAY 2026</div>
+</body>
+</html>

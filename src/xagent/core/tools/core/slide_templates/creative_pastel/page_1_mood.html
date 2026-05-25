@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-template="creative_pastel" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #efeafe; color: #2a1f4a; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px;
+             font-family: 'DM Serif Display', Georgia, serif;
+             font-size: 60px; line-height: 1.02; color: #2a1f4a; letter-spacing: -0.01em; }
+  .heading em { font-style: italic; color: #6b4dd9; }
+  .bubble { position: absolute; display: flex; align-items: center; justify-content: center;
+            font-family: 'DM Serif Display', serif; font-style: italic;
+            color: #2a1f4a; text-align: center; padding: 0 24px; }
+  .bubble-1 { left: 90px;  top: 240px; width: 280px; height: 280px;
+              background-color: #c7b8ff; border-radius: 60% 40% 50% 50% / 55% 45% 60% 40%;
+              font-size: 36px; }
+  .bubble-2 { left: 410px; top: 280px; width: 230px; height: 230px;
+              background-color: #ffd6e7; border-radius: 50% 50% 40% 60%;
+              font-size: 32px; }
+  .bubble-3 { left: 680px; top: 220px; width: 240px; height: 240px;
+              background-color: #b8eaff; border-radius: 55% 45% 60% 40%;
+              font-size: 32px; }
+  .bubble-4 { left: 940px; top: 310px; width: 260px; height: 260px;
+              background-color: #fff2c2; border-radius: 50% 50% 55% 45%;
+              font-size: 34px; }
+  .note { position: absolute; left: 80px; bottom: 64px; right: 80px;
+          font-size: 16px; line-height: 1.55; color: #4d3f74; font-style: italic; max-width: 880px; }
+  .page-num { position: absolute; right: 80px; bottom: 40px;
+              font-family: 'DM Serif Display', serif; font-style: italic;
+              font-size: 14px; color: #6b4dd9; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">The <em>mood</em> we're chasing</div>
+  <div class="bubble bubble-1" data-slot="bubble_1">playful</div>
+  <div class="bubble bubble-2" data-slot="bubble_2">warm</div>
+  <div class="bubble bubble-3" data-slot="bubble_3">honest</div>
+  <div class="bubble bubble-4" data-slot="bubble_4">unhurried</div>
+  <div class="note" data-slot="note">A short note on how these words show up in practice — the color choices, the spacing, the rhythm of the copy.</div>
+  <div class="page-num">02 · mood</div>
+</body>
+</html>

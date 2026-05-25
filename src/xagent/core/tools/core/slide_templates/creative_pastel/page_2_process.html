@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-template="creative_pastel" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #efeafe; color: #2a1f4a; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px;
+             font-family: 'DM Serif Display', Georgia, serif;
+             font-size: 60px; line-height: 1.02; color: #2a1f4a; letter-spacing: -0.01em; }
+
+  .step { position: absolute; top: 260px; width: 340px; padding: 36px 28px;
+          background-color: #ffffff; border-radius: 28px; box-shadow: 0 6px 24px rgba(42, 31, 74, 0.06); }
+  .step-1 { left: 80px; }
+  .step-2 { left: 470px; top: 300px; }
+  .step-3 { left: 860px; top: 260px; }
+  .step-num { width: 44px; height: 44px; border-radius: 9999px;
+              background-color: #6b4dd9; color: #ffffff;
+              display: flex; align-items: center; justify-content: center;
+              font-family: 'DM Serif Display', serif; font-style: italic;
+              font-size: 22px; }
+  .step-2 .step-num { background-color: #ff8fb3; }
+  .step-3 .step-num { background-color: #ffba2e; color: #2a1f4a; }
+  .step-title { font-family: 'DM Serif Display', Georgia, serif;
+                font-size: 28px; line-height: 1.15; color: #2a1f4a; margin-top: 20px; }
+  .step-body { font-size: 15px; line-height: 1.6; color: #4d3f74; margin-top: 14px; }
+
+  .arrow { position: absolute; top: 410px; font-family: 'DM Serif Display', serif; font-style: italic;
+           font-size: 40px; color: #6b4dd9; }
+  .arrow-1 { left: 430px; }
+  .arrow-2 { left: 820px; top: 370px; }
+  .page-num { position: absolute; right: 80px; bottom: 40px;
+              font-family: 'DM Serif Display', serif; font-style: italic;
+              font-size: 14px; color: #6b4dd9; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">How the work moves</div>
+
+  <div class="step step-1">
+    <div class="step-num">1</div>
+    <div class="step-title" data-slot="step_1_title">Listen</div>
+    <div class="step-body"  data-slot="step_1_body">Short description of the first phase — what we look for, who we talk to, what the artifact looks like at the end.</div>
+  </div>
+  <div class="arrow arrow-1">→</div>
+
+  <div class="step step-2">
+    <div class="step-num">2</div>
+    <div class="step-title" data-slot="step_2_title">Shape</div>
+    <div class="step-body"  data-slot="step_2_body">Short description of the second phase — how we narrow the territory, the trade-offs we name out loud, what we throw away.</div>
+  </div>
+  <div class="arrow arrow-2">→</div>
+
+  <div class="step step-3">
+    <div class="step-num">3</div>
+    <div class="step-title" data-slot="step_3_title">Ship</div>
+    <div class="step-body"  data-slot="step_3_body">Short description of the third phase — how we hand off, how we measure, how we keep iterating after launch.</div>
+  </div>
+
+  <div class="page-num">03 · process</div>
+</body>
+</html>

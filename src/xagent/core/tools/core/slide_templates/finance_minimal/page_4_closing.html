@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" data-template="finance_minimal" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ffffff; color: #0c0c0c; position: relative; overflow: hidden; }
+  .top-line    { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #b8975c; }
+  .bottom-line { position: absolute; left: 80px; right: 80px; bottom: 60px; height: 1px; background: #b8975c; }
+  .firm-mark { position: absolute; left: 80px; top: 76px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.32em;
+               color: #b8975c; background: #ffffff; padding-right: 16px; }
+  .page-tag  { position: absolute; right: 80px; top: 76px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.32em;
+               color: #888; background: #ffffff; padding-left: 16px; }
+
+  .stack { position: absolute; left: 80px; right: 80px; top: 200px; text-align: center; }
+  .gold-rule { width: 60px; height: 2px; background: #b8975c; margin: 0 auto 32px; }
+  .headline { font-family: 'Libre Caslon Text', Georgia, serif;
+              font-size: 120px; line-height: 1; font-weight: 700; color: #0c0c0c; letter-spacing: -0.025em; }
+  .tagline  { font-family: 'Libre Caslon Text', serif; font-style: italic;
+              font-size: 20px; line-height: 1.6; color: #555; margin: 36px auto 0;
+              max-width: 720px; font-weight: 400; }
+  .contacts { margin-top: 48px; display: flex; gap: 48px; justify-content: center; }
+  .contact  { font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+              letter-spacing: 0.18em; color: #0c0c0c; text-transform: uppercase; }
+
+  .disclaimer { position: absolute; left: 80px; right: 80px; bottom: 86px;
+                font-size: 11px; line-height: 1.5; color: #888; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="top-line"></div>
+  <div class="bottom-line"></div>
+  <div class="firm-mark">HAWTHORNE</div>
+  <div class="page-tag">CLOSING · 05</div>
+  <div class="stack">
+    <div class="gold-rule"></div>
+    <div class="headline" data-slot="headline">Questions.</div>
+    <div class="tagline"  data-slot="tagline">Investor relations is available at the lines below for follow-up questions and supplemental data requests.</div>
+    <div class="contacts">
+      <div class="contact" data-slot="contact_1">IR@HAWTHORNE.COM</div>
+      <div class="contact" data-slot="contact_2">+1 555 0100</div>
+    </div>
+  </div>
+  <div class="disclaimer" data-slot="disclaimer">Forward-looking statements are subject to risks and uncertainties; actual results may differ materially. See appendix for full risk factors.</div>
+</body>
+</html>

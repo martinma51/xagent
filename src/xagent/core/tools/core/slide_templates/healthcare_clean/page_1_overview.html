@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en" data-template="healthcare_clean" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Manrope', system-ui, sans-serif;
+         background-color: #ffffff; color: #0e2a35; position: relative; overflow: hidden; }
+  .section-label { position: absolute; left: 80px; top: 80px; padding: 6px 14px;
+                   border: 1.5px solid #2fb6a0; color: #1b6f63; border-radius: 9999px;
+                   font-size: 12px; font-weight: 700; letter-spacing: 0.18em; }
+  .heading { position: absolute; left: 80px; top: 150px; width: 760px;
+             font-size: 60px; line-height: 1.05; font-weight: 700; color: #0e2a35; letter-spacing: -0.015em; }
+  .lead { position: absolute; left: 80px; top: 380px; width: 720px;
+          font-size: 19px; line-height: 1.7; color: #486975; font-weight: 500; }
+
+  .panel { position: absolute; right: 80px; top: 80px; width: 320px; height: 480px;
+           background-color: #f4faf9; border-radius: 32px; padding: 36px 32px; box-sizing: border-box;
+           border: 1px solid #e0f3f1; }
+  .panel-label { font-size: 12px; font-weight: 700; letter-spacing: 0.18em; color: #1b6f63; }
+  .panel-rule  { width: 28px; height: 2px; background: #2fb6a0; margin: 12px 0 24px; }
+  .panel-row   { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .dot         { width: 10px; height: 10px; background: #2fb6a0; border-radius: 9999px; flex-shrink: 0; }
+  .panel-text  { font-size: 15px; font-weight: 600; color: #0e2a35; line-height: 1.3; }
+
+  .teal-bar { position: absolute; left: 0; bottom: 0; width: 240px; height: 6px; background: #2fb6a0; }
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-size: 12px; font-weight: 600; letter-spacing: 0.18em; color: #486975; }
+</style>
+</head>
+<body>
+  <div class="section-label" data-slot="section_label">OVERVIEW</div>
+  <div class="heading" data-slot="heading">What this brief covers</div>
+  <div class="lead"    data-slot="lead">One or two sentences setting up the scope — what we looked at, what we left out, what questions a reader should expect this deck to answer.</div>
+
+  <div class="panel">
+    <div class="panel-label">AT A GLANCE</div>
+    <div class="panel-rule"></div>
+    <div class="panel-row"><span class="dot"></span><span class="panel-text" data-slot="tag_1">Adults 45–70, primary care</span></div>
+    <div class="panel-row"><span class="dot"></span><span class="panel-text" data-slot="tag_2">12-month observational window</span></div>
+    <div class="panel-row"><span class="dot"></span><span class="panel-text" data-slot="tag_3">Three regional health systems</span></div>
+  </div>
+
+  <div class="teal-bar"></div>
+  <div class="page-num">02 / 05</div>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en" data-template="healthcare_clean" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Manrope', system-ui, sans-serif;
+         background-color: #ffffff; color: #0e2a35; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px;
+             font-size: 52px; line-height: 1.05; font-weight: 700; color: #0e2a35; letter-spacing: -0.015em; }
+
+  .stat-card { position: absolute; top: 240px; width: 340px; height: 320px; padding: 36px 32px;
+               background-color: #f4faf9; border: 1px solid #e0f3f1; border-radius: 28px;
+               display: flex; flex-direction: column; justify-content: space-between; }
+  .stat-1 { left: 80px;  background-color: #0e2a35; color: #ffffff; border-color: #0e2a35; }
+  .stat-2 { left: 470px; }
+  .stat-3 { left: 860px; }
+
+  .stat-value { font-size: 96px; line-height: 1; font-weight: 800; letter-spacing: -0.03em; }
+  .stat-1 .stat-value { color: #2fb6a0; }
+  .stat-2 .stat-value { color: #0e2a35; }
+  .stat-3 .stat-value { color: #0e2a35; }
+  .stat-divider { width: 36px; height: 3px; background: #2fb6a0; border-radius: 2px; }
+  .stat-label { font-size: 16px; font-weight: 600; line-height: 1.4; }
+  .stat-1 .stat-label { color: #c2e9e4; }
+  .stat-2 .stat-label { color: #486975; }
+  .stat-3 .stat-label { color: #486975; }
+
+  .source { position: absolute; left: 80px; bottom: 56px; right: 80px;
+            font-size: 13px; color: #486975; font-style: italic; font-weight: 500; }
+  .teal-bar { position: absolute; left: 0; bottom: 0; width: 240px; height: 6px; background: #2fb6a0; }
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-size: 12px; font-weight: 600; letter-spacing: 0.18em; color: #486975; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">The outcomes, by the numbers</div>
+
+  <div class="stat-card stat-1">
+    <div>
+      <div class="stat-value" data-slot="stat_1">62%</div>
+    </div>
+    <div>
+      <div class="stat-divider"></div>
+      <div class="stat-label" data-slot="stat_1_label" style="margin-top: 16px;">Symptom resolution at week 12</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-2">
+    <div>
+      <div class="stat-value" data-slot="stat_2">1.8d</div>
+    </div>
+    <div>
+      <div class="stat-divider"></div>
+      <div class="stat-label" data-slot="stat_2_label" style="margin-top: 16px;">Average length of stay reduction</div>
+    </div>
+  </div>
+
+  <div class="stat-card stat-3">
+    <div>
+      <div class="stat-value" data-slot="stat_3">97%</div>
+    </div>
+    <div>
+      <div class="stat-divider"></div>
+      <div class="stat-label" data-slot="stat_3_label" style="margin-top: 16px;">Patient-reported satisfaction</div>
+    </div>
+  </div>
+
+  <div class="source" data-slot="source">Source: institutional cohort, Q1–Q4 2025. Confidence intervals available in appendix.</div>
+  <div class="teal-bar"></div>
+  <div class="page-num">04 / 05</div>
+</body>
+</html>

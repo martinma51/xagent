@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" data-template="creative_pastel" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #efeafe; color: #2a1f4a; position: relative; overflow: hidden; }
+  .blob-a { position: absolute; left: -120px; top: -120px; width: 460px; height: 440px;
+            background-color: #c7b8ff; border-radius: 60% 40% 50% 50% / 55% 45% 60% 40%; opacity: 0.85; }
+  .blob-b { position: absolute; right: -100px; top: 200px; width: 380px; height: 380px;
+            background-color: #ffd6e7; border-radius: 50% 50% 40% 60% / 45% 55% 45% 55%; opacity: 0.9; }
+  .blob-c { position: absolute; right: 240px; bottom: -160px; width: 320px; height: 320px;
+            background-color: #fff2c2; border-radius: 55% 45% 50% 50%; opacity: 0.95; }
+  .dot-cluster { position: absolute; left: 460px; top: 120px; }
+  .dot { width: 10px; height: 10px; border-radius: 9999px; background: #2a1f4a; display: inline-block; margin: 0 6px; opacity: 0.4; }
+  .tag { position: absolute; left: 80px; top: 96px; padding: 8px 18px;
+         background-color: #2a1f4a; color: #efeafe; border-radius: 9999px;
+         font-size: 12px; font-weight: 600; letter-spacing: 0.18em; }
+  .title { position: absolute; left: 80px; top: 220px; width: 900px;
+           font-family: 'DM Serif Display', Georgia, serif;
+           font-size: 116px; line-height: 0.98; font-weight: 400; color: #2a1f4a; letter-spacing: -0.02em; }
+  .title em { font-style: italic; color: #6b4dd9; }
+  .subtitle { position: absolute; left: 80px; top: 510px; width: 720px;
+              font-size: 20px; line-height: 1.55; color: #4d3f74; font-weight: 500; }
+  .author { position: absolute; left: 80px; bottom: 64px;
+            font-size: 14px; font-weight: 600; color: #2a1f4a; letter-spacing: 0.04em; }
+  .date   { position: absolute; left: 80px; bottom: 40px; font-size: 13px; color: #6b4dd9; letter-spacing: 0.12em; }
+</style>
+</head>
+<body>
+  <div class="blob-a"></div>
+  <div class="blob-b"></div>
+  <div class="blob-c"></div>
+  <div class="dot-cluster"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  <div class="tag" data-slot="tag">CREATIVE STUDIO · 2026</div>
+  <div class="title" data-slot="title">Make it <em>soft</em>,<br/>make it sing.</div>
+  <div class="subtitle" data-slot="subtitle">A short framing line that hints at the tone of the work and invites the room to lean in.</div>
+  <div class="author" data-slot="author">Studio Name · Designer</div>
+  <div class="date"   data-slot="date">SPRING 2026</div>
+</body>
+</html>

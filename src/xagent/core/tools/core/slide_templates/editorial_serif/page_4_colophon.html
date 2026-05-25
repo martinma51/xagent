@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-template="editorial_serif" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #f3ece1; color: #1a1612; position: relative; overflow: hidden; }
+  .top-rule    { position: absolute; left: 80px; right: 80px; top: 64px; height: 2px; background: #6b1a2c; }
+  .bottom-rule { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background: #6b1a2c; }
+  .mast { position: absolute; left: 80px; top: 80px;
+          font-family: 'Playfair Display', serif; font-style: italic;
+          font-size: 22px; font-weight: 500; color: #6b1a2c; }
+  .end-mark { position: absolute; right: 80px; top: 84px;
+              font-size: 12px; font-weight: 600; letter-spacing: 0.3em; color: #6b1a2c; }
+  .stack { position: absolute; left: 0; right: 0; top: 52%; transform: translateY(-50%); text-align: center; }
+  .ornament-rule { width: 80px; height: 1px; background: #6b1a2c; margin: 0 auto 36px; }
+  .headline { font-family: 'Playfair Display', serif; font-style: italic;
+              font-size: 144px; line-height: 0.95; font-weight: 500; color: #1a1612; letter-spacing: -0.015em; }
+  .tagline  { font-family: 'Playfair Display', serif;
+              font-size: 22px; line-height: 1.5; color: #4b3f33; margin-top: 36px;
+              max-width: 720px; margin-left: auto; margin-right: auto; font-weight: 500; }
+  .contacts { margin-top: 48px; display: flex; gap: 56px; justify-content: center; }
+  .contact { font-size: 13px; font-weight: 600; letter-spacing: 0.2em; color: #1a1612; text-transform: uppercase; }
+  .ornament { position: absolute; left: 80px; bottom: 32px; font-size: 13px; letter-spacing: 0.2em; color: #6b1a2c; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="mast">The Brief</div>
+  <div class="end-mark" data-slot="end_mark">FIN.</div>
+  <div class="stack">
+    <div class="ornament-rule"></div>
+    <div class="headline" data-slot="headline">Thank you for reading.</div>
+    <div class="tagline"  data-slot="tagline">A closing line — an invitation to keep the conversation going, or simply a sign-off.</div>
+    <div class="contacts">
+      <div class="contact" data-slot="contact_1">EDITORIAL@EXAMPLE.COM</div>
+      <div class="contact" data-slot="contact_2">EXAMPLE.COM</div>
+    </div>
+  </div>
+  <div class="bottom-rule"></div>
+  <div class="ornament">SET IN PLAYFAIR DISPLAY</div>
+</body>
+</html>

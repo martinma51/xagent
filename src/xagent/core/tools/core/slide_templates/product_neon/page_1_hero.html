@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en" data-template="product_neon" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+         background-color: #0b031a; color: #ffffff; position: relative; overflow: hidden; }
+  .grad-a { position: absolute; right: -120px; top: 200px; width: 640px; height: 640px;
+            background: radial-gradient(circle at center, rgba(255, 60, 200, 0.45), transparent 60%);
+            filter: blur(40px); }
+  .grad-b { position: absolute; right: -200px; bottom: -120px; width: 560px; height: 560px;
+            background: radial-gradient(circle at center, rgba(50, 220, 255, 0.40), transparent 60%);
+            filter: blur(40px); }
+
+  .section-label { position: absolute; left: 80px; top: 80px;
+                   font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+                   letter-spacing: 0.22em; color: #ff3cc8; }
+  .feature-name { position: absolute; left: 80px; top: 130px; width: 720px;
+                  font-size: 36px; font-weight: 700; color: #c8b8e0; letter-spacing: -0.005em; }
+  .feature-lede { position: absolute; left: 80px; top: 220px; width: 720px;
+                  font-size: 88px; line-height: 1; font-weight: 800; color: #ffffff; letter-spacing: -0.025em; }
+  .feature-lede .accent { background: linear-gradient(90deg, #ff3cc8, #32dcff);
+                          -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .feature-body { position: absolute; left: 80px; top: 470px; width: 600px;
+                  font-size: 19px; line-height: 1.65; color: #c8b8e0; font-weight: 500; }
+
+  .demo-card { position: absolute; right: 80px; top: 130px; width: 420px; height: 460px;
+               border-radius: 28px; padding: 32px;
+               background: linear-gradient(140deg, rgba(255, 60, 200, 0.15), rgba(50, 220, 255, 0.15));
+               border: 1px solid rgba(255, 255, 255, 0.18);
+               backdrop-filter: blur(12px); }
+  .demo-mock { width: 100%; height: 220px; border-radius: 16px;
+               background: linear-gradient(135deg, #1c0a3a, #3a0a4a);
+               border: 1px solid rgba(255, 255, 255, 0.12);
+               position: relative; overflow: hidden; margin-bottom: 24px; }
+  .demo-pulse { position: absolute; left: 30px; top: 30px; width: 60px; height: 60px;
+                background: linear-gradient(135deg, #ff3cc8, #32dcff); border-radius: 9999px;
+                box-shadow: 0 0 60px rgba(255, 60, 200, 0.65); }
+  .demo-bar-1 { position: absolute; left: 30px; top: 110px; width: 200px; height: 10px;
+                background: rgba(255, 255, 255, 0.5); border-radius: 9999px; }
+  .demo-bar-2 { position: absolute; left: 30px; top: 130px; width: 140px; height: 10px;
+                background: rgba(255, 255, 255, 0.3); border-radius: 9999px; }
+  .demo-bar-3 { position: absolute; left: 30px; top: 150px; width: 240px; height: 10px;
+                background: rgba(50, 220, 255, 0.7); border-radius: 9999px; }
+  .demo-tag { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+              letter-spacing: 0.2em; color: #32dcff; }
+  .demo-line { font-size: 16px; color: #ffffff; line-height: 1.5; margin-top: 8px; font-weight: 500; }
+
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-family: 'JetBrains Mono', monospace; font-size: 11px;
+              letter-spacing: 0.18em; color: rgba(255, 255, 255, 0.4); }
+</style>
+</head>
+<body>
+  <div class="grad-a"></div>
+  <div class="grad-b"></div>
+  <div class="section-label" data-slot="section_label">→ HEADLINE FEATURE</div>
+  <div class="feature-name" data-slot="feature_name">Pulse Engine</div>
+  <div class="feature-lede" data-slot="feature_lede">Realtime, <span class="accent">on-device</span>, no compromises.</div>
+  <div class="feature-body" data-slot="feature_body">One paragraph of context. Describe what the feature does, what trade-off you eliminated, and why a power user will feel it the first day they use it.</div>
+
+  <div class="demo-card">
+    <div class="demo-mock">
+      <div class="demo-pulse"></div>
+      <div class="demo-bar-1"></div>
+      <div class="demo-bar-2"></div>
+      <div class="demo-bar-3"></div>
+    </div>
+    <div class="demo-tag">→ LIVE PREVIEW</div>
+    <div class="demo-line">Sub-50ms response, every keystroke.</div>
+  </div>
+
+  <div class="page-num">02 / 05</div>
+</body>
+</html>

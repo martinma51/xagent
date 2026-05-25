@@ -1,0 +1,70 @@
+{
+  "id": "bold_orange",
+  "name": "Bold Orange",
+  "description": "Black background, oversized orange sans-serif, and geometric blocks — for town halls, all-hands, and unapologetic announcements.",
+  "category": "Business",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "eyebrow":  { "type": "text", "max_length": 40,  "required": false, "hint": "Tag-like label." },
+        "title":    { "type": "text", "max_length": 60,  "required": true,  "hint": "Bold one-liner; the bigger the better." },
+        "subtitle": { "type": "text", "max_length": 140, "required": false },
+        "author":   { "type": "text", "max_length": 60,  "required": false },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_lead_callout.html",
+      "layout": "lead_callout",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false },
+        "heading":       { "type": "text", "max_length": 80,  "required": true },
+        "callout":       { "type": "text", "max_length": 160, "required": true,  "hint": "The line you want everyone to remember." },
+        "supporting":    { "type": "text", "max_length": 240, "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_two_col_compare.html",
+      "layout": "two_col_compare",
+      "slots": {
+        "heading":     { "type": "text", "max_length": 60,  "required": true },
+        "left_title":  { "type": "text", "max_length": 30,  "required": true },
+        "left_body":   { "type": "text", "max_length": 220, "required": true },
+        "right_title": { "type": "text", "max_length": 30,  "required": true },
+        "right_body":  { "type": "text", "max_length": 220, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_big_numbers.html",
+      "layout": "big_numbers",
+      "slots": {
+        "heading":  { "type": "text", "max_length": 60,  "required": true },
+        "num_1":    { "type": "text", "max_length": 10,  "required": true },
+        "num_1_label": { "type": "text", "max_length": 50, "required": true },
+        "num_2":    { "type": "text", "max_length": 10,  "required": true },
+        "num_2_label": { "type": "text", "max_length": 50, "required": true },
+        "footnote": { "type": "text", "max_length": 160, "required": false }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true },
+        "tagline":   { "type": "text", "max_length": 120, "required": false },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false }
+      }
+    }
+  ]
+}

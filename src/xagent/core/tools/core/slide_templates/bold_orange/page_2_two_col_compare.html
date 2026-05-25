@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en" data-template="bold_orange" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0a0a0a; color: #ffffff; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px;
+             font-family: 'Archivo Black', 'Arial Black', sans-serif;
+             font-size: 56px; line-height: 1.02; letter-spacing: -0.01em;
+             text-transform: uppercase; color: #ffffff; }
+
+  .col { position: absolute; top: 220px; width: 520px; height: 380px; padding: 36px 36px 36px 32px;
+         border: 2px solid #232323; }
+  .col-left  { left: 80px; }
+  .col-right { left: 680px; background-color: #ff6a1f; color: #0a0a0a; border-color: #ff6a1f; }
+  .col-tag-left  { display: inline-block; padding: 4px 12px; background-color: #232323; color: #b4b4b4;
+                   font-size: 11px; font-weight: 700; letter-spacing: 0.22em; }
+  .col-tag-right { display: inline-block; padding: 4px 12px; background-color: #0a0a0a; color: #ff6a1f;
+                   font-size: 11px; font-weight: 700; letter-spacing: 0.22em; }
+  .col-title { font-family: 'Archivo Black', 'Arial Black', sans-serif;
+               font-size: 40px; line-height: 1.05; margin-top: 24px;
+               letter-spacing: -0.01em; }
+  .col-divider-left  { width: 40px; height: 3px; background: #ff6a1f; margin: 28px 0; }
+  .col-divider-right { width: 40px; height: 3px; background: #0a0a0a; margin: 28px 0; }
+  .col-body  { font-size: 16px; line-height: 1.65; }
+  .col-body.left  { color: #cccccc; }
+  .col-body.right { color: #0a0a0a; }
+  .page-num { position: absolute; right: 80px; bottom: 40px;
+              font-family: 'Archivo Black', sans-serif; font-size: 16px; color: #ff6a1f; letter-spacing: 0.15em; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">Where we were, where we're going</div>
+
+  <div class="col col-left">
+    <div class="col-tag-left">BEFORE</div>
+    <div class="col-title" data-slot="left_title">Status quo</div>
+    <div class="col-divider-left"></div>
+    <div class="col-body left" data-slot="left_body">A short paragraph describing what's been true so far — the limits, the workarounds, the cost we've been quietly paying.</div>
+  </div>
+
+  <div class="col col-right">
+    <div class="col-tag-right">AFTER</div>
+    <div class="col-title" data-slot="right_title">What changes</div>
+    <div class="col-divider-right"></div>
+    <div class="col-body right" data-slot="right_body">A short paragraph describing the new shape of things — what becomes possible and what we stop having to do.</div>
+  </div>
+
+  <div class="page-num">03 / 05</div>
+</body>
+</html>

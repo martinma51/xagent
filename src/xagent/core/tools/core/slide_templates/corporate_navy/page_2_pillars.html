@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" data-template="corporate_navy" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0c1d3a; color: #f5f2eb; position: relative; overflow: hidden; }
+  .gold-rule { position: absolute; left: 80px; top: 88px; width: 40px; height: 1px; background: #c5a572; }
+  .heading { position: absolute; left: 80px; top: 110px; width: 880px;
+             font-family: 'Cormorant Garamond', Georgia, serif;
+             font-size: 56px; line-height: 1.08; font-weight: 600; color: #ffffff; letter-spacing: -0.01em; }
+  .subheading { position: absolute; left: 80px; top: 200px; width: 880px;
+                font-size: 18px; line-height: 1.55; color: #b8c4d6; }
+  .pillar { position: absolute; top: 320px; width: 340px; }
+  .pillar-1 { left: 80px;  }
+  .pillar-2 { left: 470px; }
+  .pillar-3 { left: 860px; }
+  .pillar-num { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 14px; font-weight: 600;
+                color: #c5a572; letter-spacing: 0.3em; }
+  .pillar-divider { width: 28px; height: 1px; background: #c5a572; margin: 12px 0 28px; }
+  .pillar-title { font-family: 'Cormorant Garamond', Georgia, serif;
+                  font-size: 30px; font-weight: 600; color: #ffffff; line-height: 1.15; }
+  .pillar-body  { font-size: 15px; line-height: 1.65; color: #c9d2df; margin-top: 16px; }
+  .footer-line { position: absolute; left: 80px; bottom: 80px; right: 80px;
+                 height: 1px; background: rgba(245, 242, 235, 0.18); }
+  .page-num { position: absolute; right: 80px; bottom: 52px;
+              font-size: 12px; letter-spacing: 0.2em; color: rgba(245, 242, 235, 0.4); }
+</style>
+</head>
+<body>
+  <div class="gold-rule"></div>
+  <div class="heading" data-slot="heading">Three pillars that shape every decision</div>
+  <div class="subheading" data-slot="subheading">A short framing line that explains how the pillars connect to the bigger goal.</div>
+
+  <div class="pillar pillar-1">
+    <div class="pillar-num">01</div>
+    <div class="pillar-divider"></div>
+    <div class="pillar-title" data-slot="pillar_1_title">Disciplined Capital</div>
+    <div class="pillar-body"  data-slot="pillar_1_body">A short description of the first pillar — what it means in practice and the standard we measure it against.</div>
+  </div>
+  <div class="pillar pillar-2">
+    <div class="pillar-num">02</div>
+    <div class="pillar-divider"></div>
+    <div class="pillar-title" data-slot="pillar_2_title">Long-Term Trust</div>
+    <div class="pillar-body"  data-slot="pillar_2_body">A short description of the second pillar — what it means in practice and the standard we measure it against.</div>
+  </div>
+  <div class="pillar pillar-3">
+    <div class="pillar-num">03</div>
+    <div class="pillar-divider"></div>
+    <div class="pillar-title" data-slot="pillar_3_title">Operating Rigor</div>
+    <div class="pillar-body"  data-slot="pillar_3_body">A short description of the third pillar — what it means in practice and the standard we measure it against.</div>
+  </div>
+
+  <div class="footer-line"></div>
+  <div class="page-num">— 03 —</div>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-template="startup_pitch" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Space Grotesk', system-ui, sans-serif;
+         background-color: #ffffff; color: #0a0a0a; position: relative; overflow: hidden; }
+  .heading-tag { position: absolute; left: 80px; top: 80px;
+                 font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+                 letter-spacing: 0.2em; color: #0a0a0a; }
+  .heading-rule { position: absolute; left: 80px; top: 108px; width: 64px; height: 4px; background: #ffd400; }
+  .heading { position: absolute; left: 80px; top: 130px;
+             font-size: 32px; line-height: 1.2; font-weight: 500; color: #888; letter-spacing: -0.01em; }
+  .heading .accent { color: #0a0a0a; font-weight: 700; }
+
+  .headline { position: absolute; left: 80px; top: 250px; width: 720px;
+              font-size: 72px; line-height: 1.05; font-weight: 700; color: #0a0a0a; letter-spacing: -0.025em; }
+  .headline .highlight { background: #ffd400; padding: 0 8px; }
+  .body { position: absolute; left: 80px; top: 510px; width: 720px;
+          font-size: 18px; line-height: 1.65; color: #333; font-weight: 400; }
+
+  .stat-box { position: absolute; right: 80px; top: 250px; width: 320px; height: 320px;
+              background-color: #0a0a0a; color: #ffd400; padding: 36px 32px;
+              display: flex; flex-direction: column; justify-content: space-between; }
+  .stat-tag   { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+                letter-spacing: 0.2em; color: #ffd400; }
+  .stat-value { font-size: 110px; line-height: 1; font-weight: 700; color: #ffd400; letter-spacing: -0.03em; }
+  .stat-label { font-size: 16px; font-weight: 500; line-height: 1.4; color: #ffffff; }
+
+  .footer-marks { position: absolute; right: 80px; bottom: 36px;
+                  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+                  letter-spacing: 0.15em; color: #888; }
+</style>
+</head>
+<body>
+  <div class="heading-tag">PROBLEM</div>
+  <div class="heading-rule"></div>
+  <div class="heading" data-slot="heading">the problem we keep running into</div>
+  <div class="headline" data-slot="headline">Every team in this market is paying the <span class="highlight">same hidden tax.</span></div>
+  <div class="body" data-slot="body">One paragraph of context. Describe the workflow that's broken, the people who feel it, and why solutions to date have only nibbled at the edges. End on the line of pain you want the room thinking about.</div>
+
+  <div class="stat-box">
+    <div class="stat-tag">— THE COST</div>
+    <div>
+      <div class="stat-value" data-slot="stat">68%</div>
+      <div class="stat-label" data-slot="stat_label" style="margin-top: 12px;">of teams say it's the bottleneck slowing them down</div>
+    </div>
+  </div>
+
+  <div class="footer-marks">02 / 05 · PROBLEM</div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-template="editorial_serif" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #f3ece1; color: #1a1612; position: relative; overflow: hidden; }
+  .rule-top { position: absolute; left: 80px; right: 80px; top: 80px; height: 1px; background: rgba(107, 26, 44, 0.4); }
+  .section-mark { position: absolute; left: 80px; top: 92px;
+                  font-family: 'Playfair Display', serif; font-style: italic;
+                  font-size: 16px; color: #6b1a2c; }
+  .heading { position: absolute; left: 80px; top: 140px; width: 1120px;
+             font-family: 'Playfair Display', Georgia, serif;
+             font-size: 64px; line-height: 1.05; font-weight: 700; color: #1a1612; letter-spacing: -0.01em; }
+
+  .col { position: absolute; top: 330px; width: 520px; }
+  .col-1 { left: 80px; }
+  .col-2 { left: 680px; }
+  .col-rule { width: 32px; height: 1px; background: #6b1a2c; margin-bottom: 20px; }
+  .col-body { font-family: 'Playfair Display', Georgia, serif;
+              font-size: 19px; line-height: 1.65; color: #2a221a; font-weight: 500; }
+  .col-body p { margin: 0 0 16px; }
+
+  .col-divider { position: absolute; left: 638px; top: 320px; width: 1px; height: 280px;
+                 background: rgba(107, 26, 44, 0.25); }
+  .footer-line { position: absolute; left: 80px; right: 80px; bottom: 60px; height: 1px; background: rgba(107, 26, 44, 0.25); }
+  .page-num { position: absolute; right: 80px; bottom: 32px;
+              font-family: 'Playfair Display', serif; font-style: italic;
+              font-size: 14px; color: #6b1a2c; }
+</style>
+</head>
+<body>
+  <div class="rule-top"></div>
+  <div class="section-mark">§ a closer look</div>
+  <div class="heading" data-slot="heading">Two threads of the same argument</div>
+  <div class="col-divider"></div>
+  <div class="col col-1">
+    <div class="col-rule"></div>
+    <div class="col-body" data-slot="col_1">First column of body copy. Set in serif at a comfortable reading size, with room to breathe. This is where the deeper argument unfolds in long form.</div>
+  </div>
+  <div class="col col-2">
+    <div class="col-rule"></div>
+    <div class="col-body" data-slot="col_2">Second column of body copy. A counterpoint, an example, or the other side of the same coin. Together the two columns hold the page in tension.</div>
+  </div>
+  <div class="footer-line"></div>
+  <div class="page-num">— 04 —</div>
+</body>
+</html>

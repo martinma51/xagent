@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en" data-template="corporate_navy" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0c1d3a; color: #f5f2eb; position: relative; overflow: hidden; }
+  .side-rule { position: absolute; left: 80px; top: 80px; width: 1px; height: 560px;
+               background: linear-gradient(to bottom, #c5a572, rgba(197, 165, 114, 0)); }
+  .section-label { position: absolute; left: 120px; top: 80px;
+                   font-size: 12px; font-weight: 600; letter-spacing: 0.32em; color: #c5a572; }
+  .heading { position: absolute; left: 120px; top: 140px; width: 880px;
+             font-family: 'Cormorant Garamond', Georgia, serif;
+             font-size: 64px; line-height: 1.08; font-weight: 600; color: #ffffff; letter-spacing: -0.01em; }
+  .body-1 { position: absolute; left: 120px; top: 360px; width: 520px;
+            font-size: 17px; line-height: 1.7; color: #d3dae6; }
+  .body-2 { position: absolute; left: 680px; top: 360px; width: 520px;
+            font-size: 17px; line-height: 1.7; color: #d3dae6; }
+  .page-num { position: absolute; right: 80px; bottom: 52px;
+              font-size: 12px; letter-spacing: 0.2em; color: rgba(245, 242, 235, 0.4); }
+</style>
+</head>
+<body>
+  <div class="side-rule"></div>
+  <div class="section-label" data-slot="section_label">OUR MISSION</div>
+  <div class="heading" data-slot="heading">Where ambition meets accountability</div>
+  <div class="body-1" data-slot="body_1">Our work is anchored in clarity of purpose. Each decision we make is held against the standard of long-term value rather than short-term motion, and that discipline is what compounds over years.</div>
+  <div class="body-2" data-slot="body_2">We treat trust as our most important asset — earned in increments and easily lost. The pages that follow trace how that conviction shows up in concrete decisions, numbers, and the priorities ahead.</div>
+  <div class="page-num">— 02 —</div>
+</body>
+</html>

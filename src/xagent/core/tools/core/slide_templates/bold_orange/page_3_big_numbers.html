@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-template="bold_orange" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0a0a0a; color: #ffffff; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px;
+             font-family: 'Archivo Black', 'Arial Black', sans-serif;
+             font-size: 56px; line-height: 1.02; letter-spacing: -0.01em;
+             text-transform: uppercase; color: #ffffff; }
+  .heading .accent { color: #ff6a1f; }
+
+  .num-block { position: absolute; top: 230px; width: 520px; height: 320px; padding: 40px 44px;
+               display: flex; flex-direction: column; justify-content: space-between; }
+  .num-1 { left: 80px;  background-color: #ff6a1f; color: #0a0a0a; }
+  .num-2 { left: 680px; background-color: #1a1a1a; color: #ffffff; border: 2px solid #2a2a2a; }
+  .num-value { font-family: 'Archivo Black', 'Arial Black', sans-serif;
+               font-size: 184px; line-height: 0.95; letter-spacing: -0.04em; }
+  .num-1 .num-value { color: #0a0a0a; }
+  .num-2 .num-value { color: #ff6a1f; }
+  .num-label { font-size: 17px; font-weight: 600; line-height: 1.4; }
+  .num-1 .num-label { color: #0a0a0a; }
+  .num-2 .num-label { color: #cccccc; }
+
+  .footnote { position: absolute; left: 80px; top: 590px; width: 1120px;
+              font-size: 14px; color: #777; letter-spacing: 0.02em; }
+  .page-num { position: absolute; right: 80px; bottom: 40px;
+              font-family: 'Archivo Black', sans-serif; font-size: 16px; color: #ff6a1f; letter-spacing: 0.15em; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">The <span class="accent">numbers</span> behind the call</div>
+
+  <div class="num-block num-1">
+    <div class="num-value" data-slot="num_1">3.2x</div>
+    <div class="num-label" data-slot="num_1_label">Throughput vs. the old pipeline</div>
+  </div>
+
+  <div class="num-block num-2">
+    <div class="num-value" data-slot="num_2">11d</div>
+    <div class="num-label" data-slot="num_2_label">Median time-to-ship since the rewrite</div>
+  </div>
+
+  <div class="footnote" data-slot="footnote">Source: internal telemetry, rolling 90-day window. Replace with the actual source line for your numbers.</div>
+  <div class="page-num">04 / 05</div>
+</body>
+</html>

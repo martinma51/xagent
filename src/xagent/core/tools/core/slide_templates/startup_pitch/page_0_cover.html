@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" data-template="startup_pitch" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Space Grotesk', system-ui, sans-serif;
+         background-color: #ffffff; color: #0a0a0a; position: relative; overflow: hidden; }
+  .yellow-square { position: absolute; right: 80px; top: 80px; width: 200px; height: 200px;
+                   background-color: #ffd400; }
+  .yellow-line   { position: absolute; left: 80px; top: 280px; width: 64px; height: 6px;
+                   background-color: #ffd400; }
+  .grid-marks    { position: absolute; right: 80px; bottom: 80px;
+                   font-family: 'JetBrains Mono', monospace; font-size: 11px;
+                   letter-spacing: 0.1em; color: #888; }
+
+  .stage   { position: absolute; left: 80px; top: 80px;
+             font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+             letter-spacing: 0.2em; color: #0a0a0a; }
+  .company { position: absolute; left: 80px; top: 320px;
+             font-size: 140px; line-height: 0.95; font-weight: 700; color: #0a0a0a;
+             letter-spacing: -0.04em; }
+  .tagline { position: absolute; left: 80px; top: 500px; right: 80px;
+             font-size: 28px; line-height: 1.3; font-weight: 500; color: #0a0a0a;
+             letter-spacing: -0.01em; }
+  .deck-for { position: absolute; left: 80px; bottom: 64px;
+              font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 500;
+              letter-spacing: 0.15em; color: #555; }
+</style>
+</head>
+<body>
+  <div class="yellow-square"></div>
+  <div class="yellow-line"></div>
+  <div class="grid-marks">01 / 05 · COVER</div>
+  <div class="stage" data-slot="stage">SEED · 2026</div>
+  <div class="company" data-slot="company">Acme.</div>
+  <div class="tagline" data-slot="tagline">We're making the boring part of [industry] disappear, for everyone.</div>
+  <div class="deck-for" data-slot="deck_for">→ FOR EXAMPLE CAPITAL</div>
+</body>
+</html>

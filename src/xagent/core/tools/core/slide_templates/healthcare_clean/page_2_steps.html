@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" data-template="healthcare_clean" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Manrope', system-ui, sans-serif;
+         background-color: #ffffff; color: #0e2a35; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px;
+             font-size: 52px; line-height: 1.05; font-weight: 700; color: #0e2a35; letter-spacing: -0.015em; }
+
+  .timeline { position: absolute; left: 80px; right: 80px; top: 280px;
+              height: 2px; background: #c2e9e4; }
+  .timeline-fill { position: absolute; left: 80px; top: 280px; width: 920px; height: 2px;
+                   background: #2fb6a0; }
+
+  .step { position: absolute; top: 232px; width: 240px; }
+  .step-1 { left: 80px; }
+  .step-2 { left: 360px; }
+  .step-3 { left: 640px; }
+  .step-4 { left: 920px; }
+  .step-mark { width: 48px; height: 48px; border-radius: 9999px;
+               background-color: #2fb6a0; color: #ffffff;
+               display: flex; align-items: center; justify-content: center;
+               font-size: 18px; font-weight: 700;
+               box-shadow: 0 0 0 6px #ffffff, 0 0 0 8px #2fb6a0; }
+  .step-4 .step-mark { background-color: #ffffff; color: #2fb6a0;
+                       box-shadow: 0 0 0 6px #ffffff, 0 0 0 8px #c2e9e4; }
+  .step-title { font-size: 20px; font-weight: 700; color: #0e2a35; margin-top: 80px; line-height: 1.2; }
+  .step-body  { font-size: 14px; line-height: 1.55; color: #486975; margin-top: 12px;
+                font-weight: 500; max-width: 220px; }
+
+  .teal-bar { position: absolute; left: 0; bottom: 0; width: 240px; height: 6px; background: #2fb6a0; }
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-size: 12px; font-weight: 600; letter-spacing: 0.18em; color: #486975; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">How the protocol flows, end to end</div>
+
+  <div class="timeline"></div>
+  <div class="timeline-fill"></div>
+
+  <div class="step step-1">
+    <div class="step-mark">01</div>
+    <div class="step-title" data-slot="step_1">Screen</div>
+    <div class="step-body"  data-slot="step_1_body">Short note describing the screening step and the gating criteria.</div>
+  </div>
+  <div class="step step-2">
+    <div class="step-mark">02</div>
+    <div class="step-title" data-slot="step_2">Assess</div>
+    <div class="step-body"  data-slot="step_2_body">Short note describing the diagnostic / risk-assessment step.</div>
+  </div>
+  <div class="step step-3">
+    <div class="step-mark">03</div>
+    <div class="step-title" data-slot="step_3">Intervene</div>
+    <div class="step-body"  data-slot="step_3_body">Short note describing the chosen intervention or treatment path.</div>
+  </div>
+  <div class="step step-4">
+    <div class="step-mark">04</div>
+    <div class="step-title" data-slot="step_4">Follow up</div>
+    <div class="step-body"  data-slot="step_4_body">Short note describing follow-up cadence, outcomes tracked, and reporting.</div>
+  </div>
+
+  <div class="teal-bar"></div>
+  <div class="page-num">03 / 05</div>
+</body>
+</html>

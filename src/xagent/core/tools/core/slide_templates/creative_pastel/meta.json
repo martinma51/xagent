@@ -1,0 +1,73 @@
+{
+  "id": "creative_pastel",
+  "name": "Creative Pastel",
+  "description": "Soft lavender canvas with organic blob shapes and rounded sans-serif — for design talks, brand sprints, and creative reviews.",
+  "category": "Creative",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "tag":      { "type": "text", "max_length": 40,  "required": false, "hint": "Small studio/topic tag." },
+        "title":    { "type": "text", "max_length": 80,  "required": true },
+        "subtitle": { "type": "text", "max_length": 160, "required": false },
+        "author":   { "type": "text", "max_length": 60,  "required": false },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_mood.html",
+      "layout": "mood_board",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 60,  "required": true },
+        "bubble_1":  { "type": "text", "max_length": 30,  "required": true,  "hint": "Word or short phrase." },
+        "bubble_2":  { "type": "text", "max_length": 30,  "required": true },
+        "bubble_3":  { "type": "text", "max_length": 30,  "required": true },
+        "bubble_4":  { "type": "text", "max_length": 30,  "required": true },
+        "note":      { "type": "text", "max_length": 200, "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_process.html",
+      "layout": "process_steps",
+      "slots": {
+        "heading":     { "type": "text", "max_length": 60,  "required": true },
+        "step_1_title": { "type": "text", "max_length": 30,  "required": true },
+        "step_1_body":  { "type": "text", "max_length": 140, "required": true },
+        "step_2_title": { "type": "text", "max_length": 30,  "required": true },
+        "step_2_body":  { "type": "text", "max_length": 140, "required": true },
+        "step_3_title": { "type": "text", "max_length": 30,  "required": true },
+        "step_3_body":  { "type": "text", "max_length": 140, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_showcase.html",
+      "layout": "showcase",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 60,  "required": true },
+        "lead":      { "type": "text", "max_length": 200, "required": true },
+        "caption_1": { "type": "text", "max_length": 60,  "required": true },
+        "caption_2": { "type": "text", "max_length": 60,  "required": true },
+        "caption_3": { "type": "text", "max_length": 60,  "required": true }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true },
+        "tagline":   { "type": "text", "max_length": 120, "required": false },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false }
+      }
+    }
+  ]
+}

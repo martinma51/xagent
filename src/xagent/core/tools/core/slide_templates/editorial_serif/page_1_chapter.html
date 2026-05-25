@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" data-template="editorial_serif" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #f3ece1; color: #1a1612; position: relative; overflow: hidden; }
+  .chapter-num { position: absolute; left: 80px; top: 80px;
+                 font-family: 'Playfair Display', Georgia, serif; font-style: italic;
+                 font-size: 18px; color: #6b1a2c; letter-spacing: 0.08em; }
+  .chapter-rule { position: absolute; left: 80px; top: 120px; width: 60px; height: 1px; background: #6b1a2c; }
+  .chapter { position: absolute; left: 80px; top: 160px; width: 1120px;
+             font-family: 'Playfair Display', Georgia, serif;
+             font-size: 88px; line-height: 1.02; font-weight: 700; color: #1a1612;
+             letter-spacing: -0.015em; }
+  .drop-cap { float: left; font-family: 'Playfair Display', Georgia, serif;
+              font-size: 116px; line-height: 0.85; font-weight: 500; color: #6b1a2c;
+              margin: 4px 14px 0 0; }
+  .intro { position: absolute; left: 80px; top: 380px; width: 1120px;
+           font-family: 'Playfair Display', Georgia, serif;
+           font-size: 22px; line-height: 1.6; color: #2a221a; font-weight: 500; }
+  .footer-line { position: absolute; left: 80px; right: 80px; bottom: 60px; height: 1px; background: rgba(107, 26, 44, 0.25); }
+  .page-num { position: absolute; right: 80px; bottom: 32px;
+              font-family: 'Playfair Display', serif; font-style: italic;
+              font-size: 14px; color: #6b1a2c; }
+</style>
+</head>
+<body>
+  <div class="chapter-num" data-slot="chapter_num">CH. 01</div>
+  <div class="chapter-rule"></div>
+  <div class="chapter" data-slot="chapter">The opening argument</div>
+  <div class="intro"><span class="drop-cap">T</span><span data-slot="intro">he opening paragraph carries the weight of the chapter — it tells the reader why this part of the story matters, what they should be paying attention to, and the tone in which it will be told.</span></div>
+  <div class="footer-line"></div>
+  <div class="page-num">— 02 —</div>
+</body>
+</html>

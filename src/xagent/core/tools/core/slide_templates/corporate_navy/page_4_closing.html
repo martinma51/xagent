@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-template="corporate_navy" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0c1d3a; color: #f5f2eb; position: relative; overflow: hidden; }
+  .arc-a { position: absolute; left: -260px; bottom: -260px; width: 760px; height: 760px;
+           border: 2px solid rgba(197, 165, 114, 0.18); border-radius: 9999px; }
+  .arc-b { position: absolute; left: -160px; bottom: -160px; width: 560px; height: 560px;
+           border: 2px solid rgba(197, 165, 114, 0.30); border-radius: 9999px; }
+  .arc-c { position: absolute; left:  -60px; bottom:  -60px; width: 360px; height: 360px;
+           border: 2px solid rgba(197, 165, 114, 0.55); border-radius: 9999px; }
+
+  .stack { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+           text-align: center; }
+  .gold-rule { width: 60px; height: 1px; background: #c5a572; margin: 0 auto 36px; }
+  .headline  { font-family: 'Cormorant Garamond', Georgia, serif;
+               font-size: 128px; line-height: 1; font-weight: 600; color: #ffffff; letter-spacing: -0.02em; }
+  .tagline   { font-size: 20px; line-height: 1.55; color: #b8c4d6; margin-top: 40px;
+               max-width: 720px; margin-left: auto; margin-right: auto; }
+  .contacts  { margin-top: 56px; display: flex; gap: 48px; justify-content: center; }
+  .contact   { font-size: 15px; font-weight: 500; color: #e5dfd2; letter-spacing: 0.02em; }
+  .gold-dot  { width: 4px; height: 4px; background: #c5a572; border-radius: 9999px;
+               display: inline-block; vertical-align: middle; margin-right: 12px; transform: translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="arc-a"></div>
+  <div class="arc-b"></div>
+  <div class="arc-c"></div>
+  <div class="stack">
+    <div class="gold-rule"></div>
+    <div class="headline" data-slot="headline">Thank You</div>
+    <div class="tagline"  data-slot="tagline">We appreciate your time. The conversations that come next are how we make the work real.</div>
+    <div class="contacts">
+      <div class="contact"><span class="gold-dot"></span><span data-slot="contact_1">contact@example.com</span></div>
+      <div class="contact"><span class="gold-dot"></span><span data-slot="contact_2">www.example.com</span></div>
+    </div>
+  </div>
+</body>
+</html>

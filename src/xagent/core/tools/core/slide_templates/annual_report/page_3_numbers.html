@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" data-template="annual_report" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ede4d0; color: #283b2e; position: relative; overflow: hidden; }
+  .top-rule { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px;
+              background: #5a7a5f; opacity: 0.4; }
+  .org-mark { position: absolute; left: 80px; top: 72px;
+              font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #5a7a5f;
+              background: #ede4d0; padding-right: 14px; }
+  .section-tag { position: absolute; right: 80px; top: 72px;
+                 font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #c19a3a;
+                 background: #ede4d0; padding-left: 14px; }
+
+  .section-label { position: absolute; left: 80px; top: 120px;
+                   font-family: 'Fraunces', serif; font-style: italic;
+                   font-size: 18px; color: #5a7a5f; }
+  .heading { position: absolute; left: 80px; top: 152px; width: 1120px;
+             font-family: 'Fraunces', Georgia, serif;
+             font-size: 60px; line-height: 1.05; font-weight: 700; color: #283b2e; letter-spacing: -0.01em; }
+
+  .grid { position: absolute; left: 80px; right: 80px; top: 290px;
+          display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .stat { padding: 36px 32px; background-color: #5a7a5f; color: #ede4d0;
+          display: flex; flex-direction: column; gap: 18px; min-height: 150px;
+          justify-content: space-between; }
+  .stat-2 { background-color: #ede4d0; color: #283b2e;
+            border: 1px solid #5a7a5f; }
+  .stat-3 { background-color: #ede4d0; color: #283b2e;
+            border: 1px solid #5a7a5f; }
+  .stat-4 { background-color: #c19a3a; color: #283b2e; }
+
+  .s-value { font-family: 'Fraunces', serif;
+             font-size: 84px; line-height: 0.95; font-weight: 700; letter-spacing: -0.03em; }
+  .s-2 .s-value { color: #5a7a5f; }
+  .s-3 .s-value { color: #5a7a5f; }
+  .s-rule { width: 32px; height: 2px; background: currentColor; opacity: 0.7; }
+  .s-label { font-size: 14px; font-weight: 600; letter-spacing: 0.06em; line-height: 1.4;
+             text-transform: uppercase; }
+
+  .footer { position: absolute; left: 80px; bottom: 36px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #5a7a5f; opacity: 0.7;
+            text-transform: uppercase; }
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-family: 'Fraunces', serif; font-style: italic; font-size: 14px; color: #5a7a5f; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="org-mark">ARDEN FOUNDATION</div>
+  <div class="section-tag">BY THE NUMBERS · 04</div>
+  <div class="section-label">§ what we measured</div>
+  <div class="heading" data-slot="heading">The year in figures</div>
+
+  <div class="grid">
+    <div class="stat stat-1 s-1">
+      <div class="s-value" data-slot="stat_1">$8.4M</div>
+      <div>
+        <div class="s-rule"></div>
+        <div class="s-label" data-slot="stat_1_label" style="margin-top: 14px;">Distributed in research grants</div>
+      </div>
+    </div>
+    <div class="stat stat-2 s-2">
+      <div class="s-value" data-slot="stat_2">142</div>
+      <div>
+        <div class="s-rule"></div>
+        <div class="s-label" data-slot="stat_2_label" style="margin-top: 14px;">Fellows supported across cohorts</div>
+      </div>
+    </div>
+    <div class="stat stat-3 s-3">
+      <div class="s-value" data-slot="stat_3">27</div>
+      <div>
+        <div class="s-rule"></div>
+        <div class="s-label" data-slot="stat_3_label" style="margin-top: 14px;">Open datasets released</div>
+      </div>
+    </div>
+    <div class="stat stat-4 s-4">
+      <div class="s-value" data-slot="stat_4">1.4M</div>
+      <div>
+        <div class="s-rule"></div>
+        <div class="s-label" data-slot="stat_4_label" style="margin-top: 14px;">People reached through partner programs</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">— SECTION III —</div>
+  <div class="page-num">04</div>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" data-template="product_neon" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+         background-color: #0b031a; color: #ffffff; position: relative; overflow: hidden; }
+  .grad-strip { position: absolute; left: 0; top: 0; width: 100%; height: 4px;
+                background: linear-gradient(90deg, #ff3cc8, #8c50ff, #32dcff); }
+  .grad-fade-bottom { position: absolute; left: 0; bottom: -200px; right: 0; height: 480px;
+                      background: radial-gradient(ellipse at center, rgba(140, 80, 255, 0.30), transparent 70%);
+                      filter: blur(40px); }
+
+  .heading { position: absolute; left: 80px; top: 100px; width: 1120px;
+             font-size: 60px; line-height: 1.05; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; }
+  .heading .accent { background: linear-gradient(90deg, #ff3cc8, #32dcff);
+                     -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .caps { position: absolute; left: 80px; right: 80px; top: 290px;
+          display: flex; gap: 24px; }
+  .cap { flex: 1; padding: 32px 28px; border-radius: 24px;
+         background: linear-gradient(160deg, rgba(255, 60, 200, 0.10), rgba(50, 220, 255, 0.06));
+         border: 1px solid rgba(255, 255, 255, 0.14); min-height: 280px;
+         display: flex; flex-direction: column; gap: 16px; }
+  .cap-mark { width: 56px; height: 56px; border-radius: 16px;
+              background: linear-gradient(135deg, #ff3cc8, #32dcff);
+              display: flex; align-items: center; justify-content: center;
+              font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 700;
+              color: #0b031a; }
+  .cap-2 .cap-mark { background: linear-gradient(135deg, #8c50ff, #ff3cc8); }
+  .cap-3 .cap-mark { background: linear-gradient(135deg, #32dcff, #8c50ff); }
+  .cap-title { font-size: 26px; font-weight: 700; color: #ffffff; line-height: 1.2; letter-spacing: -0.005em; }
+  .cap-body  { font-size: 15px; line-height: 1.6; color: #c8b8e0; flex: 1; font-weight: 500; }
+  .cap-tag   { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+               letter-spacing: 0.18em; color: #ff3cc8; }
+
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-family: 'JetBrains Mono', monospace; font-size: 11px;
+              letter-spacing: 0.18em; color: rgba(255, 255, 255, 0.4); }
+</style>
+</head>
+<body>
+  <div class="grad-strip"></div>
+  <div class="grad-fade-bottom"></div>
+  <div class="heading" data-slot="heading">What the <span class="accent">new engine</span> unlocks</div>
+
+  <div class="caps">
+    <div class="cap cap-1">
+      <div class="cap-mark">◆</div>
+      <div class="cap-tag">→ CAPABILITY 01</div>
+      <div class="cap-title" data-slot="cap_1_title">Live inference</div>
+      <div class="cap-body"  data-slot="cap_1_body">A short paragraph describing the first capability and the experience it enables for end users.</div>
+    </div>
+    <div class="cap cap-2">
+      <div class="cap-mark">◇</div>
+      <div class="cap-tag">→ CAPABILITY 02</div>
+      <div class="cap-title" data-slot="cap_2_title">On-device privacy</div>
+      <div class="cap-body"  data-slot="cap_2_body">A short paragraph describing the second capability — what it removes from the user's worry list.</div>
+    </div>
+    <div class="cap cap-3">
+      <div class="cap-mark">◈</div>
+      <div class="cap-tag">→ CAPABILITY 03</div>
+      <div class="cap-title" data-slot="cap_3_title">Composable API</div>
+      <div class="cap-body"  data-slot="cap_3_body">A short paragraph describing the third capability — the integration story for builders.</div>
+    </div>
+  </div>
+
+  <div class="page-num">03 / 05</div>
+</body>
+</html>

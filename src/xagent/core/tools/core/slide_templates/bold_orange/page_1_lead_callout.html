@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" data-template="bold_orange" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0a0a0a; color: #ffffff; position: relative; overflow: hidden; }
+  .section-label { position: absolute; left: 80px; top: 80px; padding: 6px 14px;
+                   border: 2px solid #ff6a1f; color: #ff6a1f;
+                   font-size: 12px; font-weight: 700; letter-spacing: 0.22em; }
+  .heading { position: absolute; left: 80px; top: 150px; width: 1120px;
+             font-family: 'Archivo Black', 'Arial Black', sans-serif;
+             font-size: 64px; line-height: 1.02; letter-spacing: -0.01em;
+             text-transform: uppercase; color: #ffffff; }
+  .callout-box { position: absolute; left: 80px; top: 330px; width: 1120px; padding: 36px 48px;
+                 background-color: #ff6a1f; color: #0a0a0a;
+                 border-left: 12px solid #ffffff; }
+  .callout { font-family: 'Archivo Black', 'Arial Black', sans-serif;
+             font-size: 32px; line-height: 1.2; letter-spacing: -0.01em; }
+  .supporting { position: absolute; left: 80px; top: 550px; width: 1120px;
+                font-size: 18px; line-height: 1.65; color: #b4b4b4; }
+  .page-num { position: absolute; right: 80px; bottom: 40px;
+              font-family: 'Archivo Black', sans-serif; font-size: 16px; color: #ff6a1f; letter-spacing: 0.15em; }
+</style>
+</head>
+<body>
+  <div class="section-label" data-slot="section_label">THE POINT</div>
+  <div class="heading" data-slot="heading">If you remember one thing from this talk —</div>
+  <div class="callout-box">
+    <div class="callout" data-slot="callout">"Make this the sentence the room will quote back to itself tomorrow morning."</div>
+  </div>
+  <div class="supporting" data-slot="supporting">One paragraph of context. The why behind the line above — the trade-off, the bet, the reason this matters now rather than next quarter.</div>
+  <div class="page-num">02 / 05</div>
+</body>
+</html>

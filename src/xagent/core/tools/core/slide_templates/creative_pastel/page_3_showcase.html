@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-template="creative_pastel" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #efeafe; color: #2a1f4a; position: relative; overflow: hidden; }
+  .heading { position: absolute; left: 80px; top: 80px; width: 600px;
+             font-family: 'DM Serif Display', Georgia, serif;
+             font-size: 56px; line-height: 1.05; color: #2a1f4a; letter-spacing: -0.01em; }
+  .lead { position: absolute; left: 80px; top: 240px; width: 520px;
+          font-size: 16px; line-height: 1.65; color: #4d3f74; }
+
+  .tile { position: absolute; border-radius: 24px; padding: 28px 32px;
+          font-family: 'DM Serif Display', serif; font-style: italic;
+          font-size: 22px; line-height: 1.25; color: #2a1f4a;
+          display: flex; align-items: flex-end; }
+  .tile-1 { left: 640px; top: 80px;  width: 280px; height: 270px;
+            background: linear-gradient(135deg, #c7b8ff, #9c84ff); color: #ffffff; }
+  .tile-2 { left: 940px; top: 80px;  width: 260px; height: 180px;
+            background: linear-gradient(135deg, #ffd6e7, #ff8fb3); color: #2a1f4a; }
+  .tile-3 { left: 940px; top: 280px; width: 260px; height: 360px;
+            background: linear-gradient(180deg, #fff2c2, #ffba2e); color: #2a1f4a; }
+  .tile-4 { left: 640px; top: 370px; width: 280px; height: 270px;
+            background-color: #ffffff; color: #2a1f4a;
+            box-shadow: 0 6px 24px rgba(42, 31, 74, 0.06); }
+
+  .caption-1 { position: absolute; left: 80px; bottom: 220px; width: 480px;
+               font-size: 13px; letter-spacing: 0.18em; color: #6b4dd9; font-weight: 600; }
+  .caption-2 { position: absolute; left: 80px; bottom: 180px; width: 480px;
+               font-size: 13px; letter-spacing: 0.18em; color: #6b4dd9; font-weight: 600; }
+  .caption-3 { position: absolute; left: 80px; bottom: 140px; width: 480px;
+               font-size: 13px; letter-spacing: 0.18em; color: #6b4dd9; font-weight: 600; }
+  .page-num { position: absolute; right: 80px; bottom: 40px;
+              font-family: 'DM Serif Display', serif; font-style: italic;
+              font-size: 14px; color: #6b4dd9; }
+</style>
+</head>
+<body>
+  <div class="heading" data-slot="heading">A few favorite pieces</div>
+  <div class="lead"    data-slot="lead">Short intro to the showcase — what kind of work this is, why it's grouped this way, what we want the audience to notice.</div>
+
+  <div class="tile tile-1">project alpha</div>
+  <div class="tile tile-2">studio b</div>
+  <div class="tile tile-3">vol. 03</div>
+  <div class="tile tile-4">in progress</div>
+
+  <div class="caption-1" data-slot="caption_1">— PROJECT ALPHA · 2025</div>
+  <div class="caption-2" data-slot="caption_2">— STUDIO B BRAND REFRESH · 2025</div>
+  <div class="caption-3" data-slot="caption_3">— EDITORIAL VOL. 03 · 2026</div>
+  <div class="page-num">04 · showcase</div>
+</body>
+</html>

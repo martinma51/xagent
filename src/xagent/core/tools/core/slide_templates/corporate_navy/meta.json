@@ -1,0 +1,75 @@
+{
+  "id": "corporate_navy",
+  "name": "Corporate Navy",
+  "description": "Deep navy with gold accents and Cormorant serif headlines — for premium client decks, board reviews, and corporate strategy.",
+  "category": "Business",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "eyebrow":  { "type": "text", "max_length": 40,  "required": false, "hint": "Short label, e.g. 'ANNUAL OVERVIEW'." },
+        "title":    { "type": "text", "max_length": 80,  "required": true,  "hint": "Main title in serif, 1-2 lines." },
+        "subtitle": { "type": "text", "max_length": 160, "required": false, "hint": "One-sentence framing." },
+        "author":   { "type": "text", "max_length": 60,  "required": false },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_mission.html",
+      "layout": "mission",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false, "hint": "Default 'OUR MISSION'." },
+        "heading":       { "type": "text", "max_length": 80,  "required": true },
+        "body_1":        { "type": "text", "max_length": 240, "required": true,  "hint": "First paragraph." },
+        "body_2":        { "type": "text", "max_length": 240, "required": false, "hint": "Optional second paragraph." }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_pillars.html",
+      "layout": "three_pillars",
+      "slots": {
+        "heading":        { "type": "text", "max_length": 60,  "required": true },
+        "subheading":     { "type": "text", "max_length": 120, "required": false },
+        "pillar_1_title": { "type": "text", "max_length": 30,  "required": true },
+        "pillar_1_body":  { "type": "text", "max_length": 160, "required": true },
+        "pillar_2_title": { "type": "text", "max_length": 30,  "required": true },
+        "pillar_2_body":  { "type": "text", "max_length": 160, "required": true },
+        "pillar_3_title": { "type": "text", "max_length": 30,  "required": true },
+        "pillar_3_body":  { "type": "text", "max_length": 160, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_metrics.html",
+      "layout": "metrics_row",
+      "slots": {
+        "heading":     { "type": "text", "max_length": 60,  "required": true },
+        "metric_1":    { "type": "text", "max_length": 12,  "required": true, "hint": "Big number, e.g. '$42M'." },
+        "metric_1_label": { "type": "text", "max_length": 40, "required": true },
+        "metric_2":    { "type": "text", "max_length": 12,  "required": true },
+        "metric_2_label": { "type": "text", "max_length": 40, "required": true },
+        "metric_3":    { "type": "text", "max_length": 12,  "required": true },
+        "metric_3_label": { "type": "text", "max_length": 40, "required": true },
+        "summary":     { "type": "text", "max_length": 240, "required": false, "hint": "1-2 sentence takeaway." }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true,  "hint": "e.g. 'Thank You' or 'Questions?'." },
+        "tagline":   { "type": "text", "max_length": 120, "required": false },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false }
+      }
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "id": "academic_warm",
+  "name": "Academic Warm",
+  "description": "Warm paper-cream background with classical serif and tan accents — for thesis defenses, research talks, and reading clubs.",
+  "category": "Education",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "institution": { "type": "text", "max_length": 60,  "required": false },
+        "title":       { "type": "text", "max_length": 100, "required": true,  "hint": "Paper or talk title." },
+        "subtitle":    { "type": "text", "max_length": 160, "required": false, "hint": "Subtitle or research question." },
+        "author":      { "type": "text", "max_length": 60,  "required": false },
+        "advisor":     { "type": "text", "max_length": 60,  "required": false },
+        "date":        { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_abstract.html",
+      "layout": "abstract",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false },
+        "heading":       { "type": "text", "max_length": 80,  "required": true },
+        "abstract":      { "type": "text", "max_length": 400, "required": true,  "hint": "Two- to three-paragraph abstract." },
+        "keywords":      { "type": "text", "max_length": 100, "required": false, "hint": "Comma-separated keywords." }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_methods.html",
+      "layout": "methods",
+      "slots": {
+        "heading":      { "type": "text", "max_length": 60,  "required": true },
+        "method_1_title": { "type": "text", "max_length": 30,  "required": true },
+        "method_1_body":  { "type": "text", "max_length": 160, "required": true },
+        "method_2_title": { "type": "text", "max_length": 30,  "required": true },
+        "method_2_body":  { "type": "text", "max_length": 160, "required": true },
+        "method_3_title": { "type": "text", "max_length": 30,  "required": true },
+        "method_3_body":  { "type": "text", "max_length": 160, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_findings.html",
+      "layout": "findings",
+      "slots": {
+        "heading":  { "type": "text", "max_length": 60,  "required": true },
+        "lead":     { "type": "text", "max_length": 200, "required": true },
+        "finding_1": { "type": "text", "max_length": 180, "required": true },
+        "finding_2": { "type": "text", "max_length": 180, "required": true },
+        "finding_3": { "type": "text", "max_length": 180, "required": false }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_references.html",
+      "layout": "references_closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true,  "hint": "e.g. 'Thank you' or 'Discussion'." },
+        "tagline":   { "type": "text", "max_length": 140, "required": false },
+        "ref_1":     { "type": "text", "max_length": 200, "required": false, "hint": "Reference citation, e.g. 'Author (Year). Title. Journal.'." },
+        "ref_2":     { "type": "text", "max_length": 200, "required": false },
+        "ref_3":     { "type": "text", "max_length": 200, "required": false },
+        "contact":   { "type": "text", "max_length": 80,  "required": false }
+      }
+    }
+  ]
+}

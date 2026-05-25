@@ -1,0 +1,64 @@
+{
+  "id": "editorial_serif",
+  "name": "Editorial Serif",
+  "description": "Cream paper, burgundy accents, and magazine-style serif — for brand storytelling, creative portfolios, and editorial decks.",
+  "category": "Creative",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "issue":    { "type": "text", "max_length": 40,  "required": false, "hint": "e.g. 'ISSUE 04 · SPRING 2026'." },
+        "title":    { "type": "text", "max_length": 80,  "required": true,  "hint": "Serif title, 1-3 lines." },
+        "deck":     { "type": "text", "max_length": 180, "required": false, "hint": "Magazine-style standfirst." },
+        "author":   { "type": "text", "max_length": 60,  "required": false },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_chapter.html",
+      "layout": "chapter_open",
+      "slots": {
+        "chapter_num": { "type": "text", "max_length": 6,   "required": false, "hint": "e.g. 'CH. 01'." },
+        "chapter":     { "type": "text", "max_length": 60,  "required": true },
+        "intro":       { "type": "text", "max_length": 280, "required": true,  "hint": "Long-form intro paragraph." }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_pull_quote.html",
+      "layout": "pull_quote",
+      "slots": {
+        "quote":     { "type": "text", "max_length": 200, "required": true },
+        "attribution": { "type": "text", "max_length": 60, "required": true,  "hint": "Name and role." },
+        "context":   { "type": "text", "max_length": 160, "required": false }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_two_col_text.html",
+      "layout": "two_col_text",
+      "slots": {
+        "heading":   { "type": "text", "max_length": 80,  "required": true },
+        "col_1":     { "type": "text", "max_length": 320, "required": true },
+        "col_2":     { "type": "text", "max_length": 320, "required": true }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_colophon.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true },
+        "tagline":   { "type": "text", "max_length": 140, "required": false },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false }
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en" data-template="academic_warm" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'EB Garamond', Georgia, serif;
+         background-color: #f1e8d8; color: #2b1d0e; position: relative; overflow: hidden; }
+  .top-rule { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+  .section-label { position: absolute; left: 80px; top: 68px;
+                   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+                   letter-spacing: 0.32em; color: #7c5a2a; background: #f1e8d8; padding-right: 12px; }
+  .heading { position: absolute; left: 80px; top: 110px; width: 720px;
+             font-size: 56px; line-height: 1.08; font-weight: 500; color: #2b1d0e; letter-spacing: -0.005em; }
+  .lead { position: absolute; left: 80px; top: 260px; width: 720px;
+          font-size: 19px; line-height: 1.65; color: #2b1d0e; font-style: italic; }
+
+  .finding { display: flex; align-items: flex-start; gap: 28px; margin-bottom: 26px; }
+  .findings-list { position: absolute; left: 80px; top: 400px; right: 80px; }
+  .f-num { font-family: 'EB Garamond', serif; font-style: italic; font-size: 32px;
+           color: #7c5a2a; line-height: 1; flex-shrink: 0; width: 50px; }
+  .f-body { font-size: 17px; line-height: 1.65; color: #2b1d0e; flex: 1; padding-top: 6px;
+            border-top: 1px solid #7c5a2a; padding-top: 14px; }
+
+  .page-num { position: absolute; right: 80px; bottom: 60px;
+              font-family: 'EB Garamond', serif; font-style: italic;
+              font-size: 16px; color: #7c5a2a; }
+  .pg-rule { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="section-label">§ FINDINGS</div>
+  <div class="heading" data-slot="heading">Three findings, in order of force</div>
+  <div class="lead"    data-slot="lead">A short framing sentence that introduces the findings and tells the reader how to weigh them against each other.</div>
+
+  <div class="findings-list">
+    <div class="finding">
+      <div class="f-num">i.</div>
+      <div class="f-body" data-slot="finding_1">The first finding stated as a single, declarative sentence — the kind a reader could quote back without context.</div>
+    </div>
+    <div class="finding">
+      <div class="f-num">ii.</div>
+      <div class="f-body" data-slot="finding_2">The second finding, naming the move that surprised us and what it forces the existing reading to give up.</div>
+    </div>
+    <div class="finding">
+      <div class="f-num">iii.</div>
+      <div class="f-body" data-slot="finding_3">A third finding (optional). Use it to qualify the first two, or to gesture at what remains open.</div>
+    </div>
+  </div>
+
+  <div class="pg-rule"></div>
+  <div class="page-num">— iv —</div>
+</body>
+</html>

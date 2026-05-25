@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-template="startup_pitch" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Space Grotesk', system-ui, sans-serif;
+         background-color: #ffd400; color: #0a0a0a; position: relative; overflow: hidden; }
+  .left-band { position: absolute; left: 0; top: 0; width: 200px; height: 720px;
+               background-color: #0a0a0a; }
+  .heading-tag { position: absolute; left: 240px; top: 80px;
+                 font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+                 letter-spacing: 0.2em; color: #0a0a0a; }
+  .heading-rule { position: absolute; left: 240px; top: 108px; width: 64px; height: 4px; background: #0a0a0a; }
+
+  .ask-headline { position: absolute; left: 240px; top: 160px;
+                  font-size: 96px; line-height: 0.95; font-weight: 700; color: #0a0a0a; letter-spacing: -0.03em; }
+  .ask-amount   { position: absolute; left: 240px; top: 290px;
+                  font-size: 240px; line-height: 0.9; font-weight: 700; color: #0a0a0a; letter-spacing: -0.05em; }
+
+  .uses-title { position: absolute; right: 80px; top: 160px;
+                font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+                letter-spacing: 0.2em; color: #0a0a0a; }
+  .uses { position: absolute; right: 80px; top: 200px; width: 380px; }
+  .use { display: flex; gap: 16px; padding: 18px 0; border-bottom: 2px solid #0a0a0a;
+         font-size: 18px; font-weight: 500; color: #0a0a0a; line-height: 1.35; }
+  .use-mark { font-family: 'JetBrains Mono', monospace; font-weight: 700;
+              font-size: 14px; letter-spacing: 0.1em; min-width: 30px; }
+
+  .vert-rotate { position: absolute; left: 60px; top: 80px;
+                 font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+                 letter-spacing: 0.3em; color: #ffd400; writing-mode: vertical-rl; }
+
+  .contact-bar { position: absolute; left: 240px; right: 80px; bottom: 64px;
+                 display: flex; justify-content: space-between; align-items: center;
+                 padding: 22px 28px; background-color: #0a0a0a; color: #ffd400; }
+  .contact { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700;
+             letter-spacing: 0.1em; }
+  .contact-arrow { font-size: 24px; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="left-band"></div>
+  <div class="vert-rotate">05 / 05 · THE ASK</div>
+  <div class="heading-tag">THE ASK</div>
+  <div class="heading-rule"></div>
+  <div class="ask-headline" data-slot="heading">Raising</div>
+  <div class="ask-amount" data-slot="amount">$3M</div>
+
+  <div class="uses-title">USE OF FUNDS</div>
+  <div class="uses">
+    <div class="use"><span class="use-mark">01 →</span><span data-slot="use_1">Hire 4 engineers + 1 designer over the next 9 months.</span></div>
+    <div class="use"><span class="use-mark">02 →</span><span data-slot="use_2">Go-to-market in two anchor verticals.</span></div>
+    <div class="use"><span class="use-mark">03 →</span><span data-slot="use_3">Extend runway to 22 months at the new burn.</span></div>
+  </div>
+
+  <div class="contact-bar">
+    <div class="contact" data-slot="contact">founder@acme.com · acme.com</div>
+    <div class="contact-arrow">→</div>
+  </div>
+</body>
+</html>

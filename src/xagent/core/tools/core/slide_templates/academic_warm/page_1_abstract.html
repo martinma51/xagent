@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" data-template="academic_warm" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'EB Garamond', Georgia, serif;
+         background-color: #f1e8d8; color: #2b1d0e; position: relative; overflow: hidden; }
+  .top-rule { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+  .section-label { position: absolute; left: 80px; top: 68px;
+                   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+                   letter-spacing: 0.32em; color: #7c5a2a; background: #f1e8d8; padding-right: 12px; }
+  .heading { position: absolute; left: 80px; top: 110px; width: 1120px;
+             font-size: 60px; line-height: 1.08; font-weight: 500; color: #2b1d0e; letter-spacing: -0.005em; }
+
+  .abstract-frame { position: absolute; left: 80px; top: 280px; width: 800px;
+                    border-left: 3px solid #7c5a2a; padding-left: 32px; }
+  .abstract-text { font-size: 19px; line-height: 1.7; color: #2b1d0e; font-weight: 400; }
+
+  .side-card { position: absolute; right: 80px; top: 280px; width: 280px;
+               background-color: #e7d9bb; border: 1px solid #c8a875; padding: 28px 24px; }
+  .side-label { font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+                letter-spacing: 0.3em; color: #7c5a2a; text-transform: uppercase; }
+  .side-rule { width: 28px; height: 1px; background: #7c5a2a; margin: 10px 0 18px; }
+  .keywords { font-style: italic; font-size: 17px; line-height: 1.55; color: #2b1d0e; }
+
+  .page-num { position: absolute; right: 80px; bottom: 60px;
+              font-family: 'EB Garamond', serif; font-style: italic;
+              font-size: 16px; color: #7c5a2a; }
+  .pg-rule { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="section-label" data-slot="section_label">§ ABSTRACT</div>
+  <div class="heading" data-slot="heading">Abstract & framing question</div>
+
+  <div class="abstract-frame">
+    <div class="abstract-text" data-slot="abstract">A multi-paragraph abstract. Begin with the question, follow with the method, end with the contribution. Keep the diction precise but readable — this is the page a reader returns to when they cannot remember what your argument was.</div>
+  </div>
+
+  <div class="side-card">
+    <div class="side-label">Keywords</div>
+    <div class="side-rule"></div>
+    <div class="keywords" data-slot="keywords">memory, narrative, modernism, ethics of reading</div>
+  </div>
+
+  <div class="pg-rule"></div>
+  <div class="page-num">— ii —</div>
+</body>
+</html>

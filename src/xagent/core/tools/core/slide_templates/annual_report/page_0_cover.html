@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-template="annual_report" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ede4d0; color: #283b2e; position: relative; overflow: hidden; }
+  .sage-band { position: absolute; left: 0; top: 0; width: 480px; height: 720px;
+               background-color: #5a7a5f; }
+  .seal { position: absolute; left: 80px; top: 80px; width: 76px; height: 76px;
+          border: 2px solid #ede4d0; border-radius: 9999px;
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'Fraunces', serif; font-size: 32px; font-weight: 700; color: #ede4d0; }
+  .org { position: absolute; left: 80px; top: 184px; width: 320px;
+         font-size: 12px; font-weight: 700; letter-spacing: 0.28em; color: #ede4d0;
+         text-transform: uppercase; }
+  .org-rule { position: absolute; left: 80px; top: 220px; width: 40px; height: 1px;
+              background: #ede4d0; opacity: 0.5; }
+  .vert-mark { position: absolute; left: 80px; bottom: 80px;
+               font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+               letter-spacing: 0.28em; color: #ede4d0; opacity: 0.7;
+               writing-mode: vertical-rl; }
+
+  .title { position: absolute; left: 540px; top: 200px; width: 660px;
+           font-family: 'Fraunces', Georgia, serif;
+           font-size: 88px; line-height: 1.0; font-weight: 700; color: #283b2e; letter-spacing: -0.02em; }
+  .year { position: absolute; left: 540px; top: 360px;
+          font-family: 'Fraunces', serif; font-style: italic;
+          font-size: 140px; line-height: 1; font-weight: 500; color: #5a7a5f; letter-spacing: -0.02em; }
+  .subtitle { position: absolute; left: 540px; top: 540px; width: 600px;
+              font-family: 'Fraunces', serif;
+              font-size: 19px; line-height: 1.55; color: #486052; font-weight: 500;
+              font-style: italic; }
+  .gold-rule { position: absolute; left: 540px; top: 510px; width: 80px; height: 2px; background: #c19a3a; }
+  .bottom-stamp { position: absolute; right: 80px; bottom: 64px;
+                  font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #486052;
+                  text-transform: uppercase; text-align: right; }
+</style>
+</head>
+<body>
+  <div class="sage-band"></div>
+  <div class="seal">A</div>
+  <div class="org" data-slot="org">ARDEN FOUNDATION</div>
+  <div class="org-rule"></div>
+  <div class="vert-mark">ESTABLISHED · NUMBER OF YEARS</div>
+  <div class="title" data-slot="title">Annual<br/>Report</div>
+  <div class="year"  data-slot="year">2025</div>
+  <div class="gold-rule"></div>
+  <div class="subtitle" data-slot="subtitle">A look at the people, programs, and decisions that shaped the year — and the ones that will shape the next.</div>
+  <div class="bottom-stamp">PUBLISHED MAY 2026</div>
+</body>
+</html>

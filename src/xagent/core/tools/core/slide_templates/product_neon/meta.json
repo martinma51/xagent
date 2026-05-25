@@ -1,0 +1,75 @@
+{
+  "id": "product_neon",
+  "name": "Product Neon",
+  "description": "Deep violet backdrop with neon magenta-to-cyan gradients and bold geometric sans — for product launches, AI demos, and keynote unveils.",
+  "category": "Tech",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "eyebrow":  { "type": "text", "max_length": 40,  "required": false },
+        "title":    { "type": "text", "max_length": 80,  "required": true },
+        "subtitle": { "type": "text", "max_length": 160, "required": false },
+        "version":  { "type": "text", "max_length": 24,  "required": false, "hint": "e.g. 'v3.0 · OUT NOW'." },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_hero.html",
+      "layout": "hero_feature",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false },
+        "feature_name":  { "type": "text", "max_length": 40,  "required": true },
+        "feature_lede":  { "type": "text", "max_length": 80,  "required": true,  "hint": "Big one-liner." },
+        "feature_body":  { "type": "text", "max_length": 240, "required": true }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_capabilities.html",
+      "layout": "capabilities",
+      "slots": {
+        "heading":      { "type": "text", "max_length": 60,  "required": true },
+        "cap_1_title":  { "type": "text", "max_length": 30,  "required": true },
+        "cap_1_body":   { "type": "text", "max_length": 140, "required": true },
+        "cap_2_title":  { "type": "text", "max_length": 30,  "required": true },
+        "cap_2_body":   { "type": "text", "max_length": 140, "required": true },
+        "cap_3_title":  { "type": "text", "max_length": 30,  "required": true },
+        "cap_3_body":   { "type": "text", "max_length": 140, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_specs.html",
+      "layout": "spec_table",
+      "slots": {
+        "heading":     { "type": "text", "max_length": 60,  "required": true },
+        "spec_1_key":  { "type": "text", "max_length": 30,  "required": true },
+        "spec_1_val":  { "type": "text", "max_length": 40,  "required": true },
+        "spec_2_key":  { "type": "text", "max_length": 30,  "required": true },
+        "spec_2_val":  { "type": "text", "max_length": 40,  "required": true },
+        "spec_3_key":  { "type": "text", "max_length": 30,  "required": true },
+        "spec_3_val":  { "type": "text", "max_length": 40,  "required": true },
+        "spec_4_key":  { "type": "text", "max_length": 30,  "required": true },
+        "spec_4_val":  { "type": "text", "max_length": 40,  "required": true }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_cta.html",
+      "layout": "closing_cta",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true },
+        "tagline":   { "type": "text", "max_length": 120, "required": false },
+        "cta_label": { "type": "text", "max_length": 30,  "required": true,  "hint": "Button text, e.g. 'TRY THE BETA →'." },
+        "contact":   { "type": "text", "max_length": 80,  "required": false }
+      }
+    }
+  ]
+}

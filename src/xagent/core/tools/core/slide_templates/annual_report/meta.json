@@ -1,0 +1,79 @@
+{
+  "id": "annual_report",
+  "name": "Annual Report",
+  "description": "Sage green and cream with a strict editorial grid — for annual reviews, ESG reports, and nonprofit summaries.",
+  "category": "Report",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "org":      { "type": "text", "max_length": 60,  "required": false, "hint": "Organization name." },
+        "title":    { "type": "text", "max_length": 60,  "required": true,  "hint": "e.g. 'Annual Report'." },
+        "year":     { "type": "text", "max_length": 8,   "required": true,  "hint": "e.g. '2025'." },
+        "subtitle": { "type": "text", "max_length": 160, "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_year_in_review.html",
+      "layout": "year_in_review",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false },
+        "heading":       { "type": "text", "max_length": 60,  "required": true },
+        "lead":          { "type": "text", "max_length": 280, "required": true },
+        "milestone_1":   { "type": "text", "max_length": 80,  "required": true,  "hint": "Date + short headline." },
+        "milestone_2":   { "type": "text", "max_length": 80,  "required": true },
+        "milestone_3":   { "type": "text", "max_length": 80,  "required": true },
+        "milestone_4":   { "type": "text", "max_length": 80,  "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_pillars.html",
+      "layout": "pillars",
+      "slots": {
+        "heading":      { "type": "text", "max_length": 60,  "required": true },
+        "pillar_1_title": { "type": "text", "max_length": 30,  "required": true },
+        "pillar_1_body":  { "type": "text", "max_length": 160, "required": true },
+        "pillar_2_title": { "type": "text", "max_length": 30,  "required": true },
+        "pillar_2_body":  { "type": "text", "max_length": 160, "required": true },
+        "pillar_3_title": { "type": "text", "max_length": 30,  "required": true },
+        "pillar_3_body":  { "type": "text", "max_length": 160, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_numbers.html",
+      "layout": "numbers",
+      "slots": {
+        "heading":     { "type": "text", "max_length": 60,  "required": true },
+        "stat_1":      { "type": "text", "max_length": 12,  "required": true },
+        "stat_1_label": { "type": "text", "max_length": 50, "required": true },
+        "stat_2":      { "type": "text", "max_length": 12,  "required": true },
+        "stat_2_label": { "type": "text", "max_length": 50, "required": true },
+        "stat_3":      { "type": "text", "max_length": 12,  "required": true },
+        "stat_3_label": { "type": "text", "max_length": 50, "required": true },
+        "stat_4":      { "type": "text", "max_length": 12,  "required": true },
+        "stat_4_label": { "type": "text", "max_length": 50, "required": true }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_forward.html",
+      "layout": "forward_look",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 60,  "required": true,  "hint": "e.g. 'Looking forward'." },
+        "lead":      { "type": "text", "max_length": 240, "required": true },
+        "priority_1": { "type": "text", "max_length": 80,  "required": true },
+        "priority_2": { "type": "text", "max_length": 80,  "required": true },
+        "priority_3": { "type": "text", "max_length": 80,  "required": true },
+        "contact":    { "type": "text", "max_length": 80,  "required": false }
+      }
+    }
+  ]
+}

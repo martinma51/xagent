@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-template="startup_pitch" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Space Grotesk', system-ui, sans-serif;
+         background-color: #0a0a0a; color: #ffffff; position: relative; overflow: hidden; }
+  .yellow-band { position: absolute; right: 0; top: 0; width: 100px; height: 720px;
+                 background-color: #ffd400; }
+  .heading-tag { position: absolute; left: 80px; top: 80px;
+                 font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+                 letter-spacing: 0.2em; color: #ffd400; }
+  .heading-rule { position: absolute; left: 80px; top: 108px; width: 64px; height: 4px; background: #ffd400; }
+  .heading { position: absolute; left: 80px; top: 130px;
+             font-size: 32px; line-height: 1.2; font-weight: 500; color: #888; letter-spacing: -0.01em; }
+
+  .headline { position: absolute; left: 80px; top: 250px; width: 1000px;
+              font-size: 72px; line-height: 1.05; font-weight: 700; color: #ffffff; letter-spacing: -0.025em; }
+  .headline .accent { color: #ffd400; }
+
+  .features { position: absolute; left: 80px; right: 200px; bottom: 100px;
+              display: flex; gap: 32px; }
+  .feature { flex: 1; padding: 28px 24px; background-color: rgba(255, 255, 255, 0.04);
+             border-left: 4px solid #ffd400; }
+  .f-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+           letter-spacing: 0.2em; color: #ffd400; }
+  .f-text { font-size: 18px; line-height: 1.5; font-weight: 500; color: #ffffff; margin-top: 12px; }
+
+  .yellow-mark { position: absolute; right: 30px; top: 80px;
+                 font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+                 letter-spacing: 0.2em; color: #0a0a0a; writing-mode: vertical-rl; }
+  .footer-marks { position: absolute; left: 80px; bottom: 36px;
+                  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+                  letter-spacing: 0.15em; color: #555; }
+</style>
+</head>
+<body>
+  <div class="yellow-band"></div>
+  <div class="yellow-mark">SOLUTION ↓</div>
+  <div class="heading-tag">SOLUTION</div>
+  <div class="heading-rule"></div>
+  <div class="heading" data-slot="heading">what we built</div>
+  <div class="headline" data-slot="headline">A single workflow that <span class="accent">replaces three tools</span> teams already pay for.</div>
+
+  <div class="features">
+    <div class="feature">
+      <div class="f-num">01</div>
+      <div class="f-text" data-slot="feature_1">One-line description of the first thing the product does that nothing else does this way.</div>
+    </div>
+    <div class="feature">
+      <div class="f-num">02</div>
+      <div class="f-text" data-slot="feature_2">One-line description of the second capability — what it removes from the customer's day.</div>
+    </div>
+    <div class="feature">
+      <div class="f-num">03</div>
+      <div class="f-text" data-slot="feature_3">One-line description of the third capability — what it unlocks that wasn't possible before.</div>
+    </div>
+  </div>
+
+  <div class="footer-marks">03 / 05 · SOLUTION</div>
+</body>
+</html>

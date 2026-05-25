@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-template="corporate_navy" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #0c1d3a; color: #f5f2eb; position: relative; overflow: hidden; }
+  .gold-rule { position: absolute; left: 80px; top: 88px; width: 40px; height: 1px; background: #c5a572; }
+  .heading { position: absolute; left: 80px; top: 110px; width: 1120px;
+             font-family: 'Cormorant Garamond', Georgia, serif;
+             font-size: 56px; line-height: 1.08; font-weight: 600; color: #ffffff; letter-spacing: -0.01em; }
+
+  .metrics-frame { position: absolute; left: 80px; top: 280px; right: 80px; height: 240px;
+                   border-top: 1px solid rgba(197, 165, 114, 0.4);
+                   border-bottom: 1px solid rgba(197, 165, 114, 0.4); }
+  .metric { position: absolute; top: 40px; width: 340px; text-align: left; }
+  .metric-1 { left: 0px; }
+  .metric-2 { left: 380px; padding-left: 40px; border-left: 1px solid rgba(245, 242, 235, 0.15); }
+  .metric-3 { left: 760px; padding-left: 40px; border-left: 1px solid rgba(245, 242, 235, 0.15); }
+  .metric-value { font-family: 'Cormorant Garamond', Georgia, serif;
+                  font-size: 92px; line-height: 1; font-weight: 600; color: #c5a572; letter-spacing: -0.02em; }
+  .metric-label { font-size: 14px; letter-spacing: 0.18em; color: #b8c4d6;
+                  text-transform: uppercase; margin-top: 24px; font-weight: 500; }
+
+  .summary { position: absolute; left: 80px; top: 580px; width: 1120px;
+             font-size: 17px; line-height: 1.6; color: #c9d2df; }
+  .page-num { position: absolute; right: 80px; bottom: 52px;
+              font-size: 12px; letter-spacing: 0.2em; color: rgba(245, 242, 235, 0.4); }
+</style>
+</head>
+<body>
+  <div class="gold-rule"></div>
+  <div class="heading" data-slot="heading">The year in numbers</div>
+
+  <div class="metrics-frame">
+    <div class="metric metric-1">
+      <div class="metric-value" data-slot="metric_1">$42M</div>
+      <div class="metric-label" data-slot="metric_1_label">Recurring revenue</div>
+    </div>
+    <div class="metric metric-2">
+      <div class="metric-value" data-slot="metric_2">+38%</div>
+      <div class="metric-label" data-slot="metric_2_label">Year-over-year growth</div>
+    </div>
+    <div class="metric metric-3">
+      <div class="metric-value" data-slot="metric_3">94%</div>
+      <div class="metric-label" data-slot="metric_3_label">Net retention</div>
+    </div>
+  </div>
+
+  <div class="summary" data-slot="summary">A short, plain-language read of what the numbers mean for the business and what they imply about the path forward.</div>
+  <div class="page-num">— 04 —</div>
+</body>
+</html>

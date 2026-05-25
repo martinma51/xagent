@@ -1,0 +1,78 @@
+{
+  "id": "healthcare_clean",
+  "name": "Healthcare Clean",
+  "description": "Calm white canvas, soft teal accents, and rounded geometry — for medical briefings, clinical reports, and patient-facing material.",
+  "category": "Healthcare",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "eyebrow":  { "type": "text", "max_length": 40,  "required": false, "hint": "e.g. 'CLINICAL BRIEFING'." },
+        "title":    { "type": "text", "max_length": 80,  "required": true },
+        "subtitle": { "type": "text", "max_length": 160, "required": false },
+        "author":   { "type": "text", "max_length": 60,  "required": false, "hint": "Author / institution." },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_overview.html",
+      "layout": "overview",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false },
+        "heading":       { "type": "text", "max_length": 80,  "required": true },
+        "lead":          { "type": "text", "max_length": 240, "required": true },
+        "tag_1":         { "type": "text", "max_length": 30,  "required": false },
+        "tag_2":         { "type": "text", "max_length": 30,  "required": false },
+        "tag_3":         { "type": "text", "max_length": 30,  "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_steps.html",
+      "layout": "four_steps",
+      "slots": {
+        "heading":     { "type": "text", "max_length": 60,  "required": true },
+        "step_1":      { "type": "text", "max_length": 30,  "required": true },
+        "step_1_body": { "type": "text", "max_length": 120, "required": true },
+        "step_2":      { "type": "text", "max_length": 30,  "required": true },
+        "step_2_body": { "type": "text", "max_length": 120, "required": true },
+        "step_3":      { "type": "text", "max_length": 30,  "required": true },
+        "step_3_body": { "type": "text", "max_length": 120, "required": true },
+        "step_4":      { "type": "text", "max_length": 30,  "required": true },
+        "step_4_body": { "type": "text", "max_length": 120, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_stats.html",
+      "layout": "stats",
+      "slots": {
+        "heading":      { "type": "text", "max_length": 60,  "required": true },
+        "stat_1":       { "type": "text", "max_length": 10,  "required": true },
+        "stat_1_label": { "type": "text", "max_length": 50,  "required": true },
+        "stat_2":       { "type": "text", "max_length": 10,  "required": true },
+        "stat_2_label": { "type": "text", "max_length": 50,  "required": true },
+        "stat_3":       { "type": "text", "max_length": 10,  "required": true },
+        "stat_3_label": { "type": "text", "max_length": 50,  "required": true },
+        "source":       { "type": "text", "max_length": 140, "required": false }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true },
+        "tagline":   { "type": "text", "max_length": 120, "required": false },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false }
+      }
+    }
+  ]
+}

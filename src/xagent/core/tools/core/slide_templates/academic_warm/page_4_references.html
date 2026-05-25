@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en" data-template="academic_warm" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'EB Garamond', Georgia, serif;
+         background-color: #f1e8d8; color: #2b1d0e; position: relative; overflow: hidden; }
+  .top-rule { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+  .pg-rule  { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+  .ornament { position: absolute; left: 0; right: 0; top: 110px; text-align: center;
+              font-size: 36px; color: #7c5a2a; }
+
+  .headline { position: absolute; left: 0; right: 0; top: 180px; text-align: center;
+              font-size: 80px; line-height: 1; font-weight: 500; color: #2b1d0e; letter-spacing: -0.005em; }
+  .headline em { font-style: italic; color: #7c5a2a; }
+  .tagline  { position: absolute; left: 160px; right: 160px; top: 300px; text-align: center;
+              font-style: italic; font-size: 20px; line-height: 1.55; color: #5a4a32; }
+
+  .refs-title { position: absolute; left: 80px; top: 420px;
+                font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+                letter-spacing: 0.32em; color: #7c5a2a; text-transform: uppercase; }
+  .refs-rule  { position: absolute; left: 80px; top: 444px; width: 32px; height: 1px; background: #7c5a2a; }
+  .refs       { position: absolute; left: 80px; right: 80px; top: 470px; }
+  .ref        { font-size: 15px; line-height: 1.55; color: #2b1d0e; margin-bottom: 10px;
+                text-indent: -22px; padding-left: 22px; }
+
+  .contact { position: absolute; left: 0; right: 0; bottom: 110px; text-align: center;
+             font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600;
+             letter-spacing: 0.18em; color: #2b1d0e; text-transform: uppercase; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="ornament">❦</div>
+  <div class="headline" data-slot="headline"><em>Thank you.</em></div>
+  <div class="tagline"  data-slot="tagline">Open for questions, gentle disagreements, and recommended reading.</div>
+
+  <div class="refs-title">SELECTED REFERENCES</div>
+  <div class="refs-rule"></div>
+  <div class="refs">
+    <div class="ref" data-slot="ref_1">— Author, F. (Year). <em>Title of the work in italics</em>. Publisher.</div>
+    <div class="ref" data-slot="ref_2">— Author, S. (Year). "Title of the article." <em>Journal Name</em>, vol(no), pp.</div>
+    <div class="ref" data-slot="ref_3">— Author, T. (Year). <em>A third reference, kept brief and consistent in style.</em></div>
+  </div>
+
+  <div class="pg-rule"></div>
+  <div class="contact" data-slot="contact">author@university.edu</div>
+</body>
+</html>

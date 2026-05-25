@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en" data-template="annual_report" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ede4d0; color: #283b2e; position: relative; overflow: hidden; }
+  .top-rule { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px;
+              background: #5a7a5f; opacity: 0.4; }
+  .org-mark { position: absolute; left: 80px; top: 72px;
+              font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #5a7a5f;
+              background: #ede4d0; padding-right: 14px; }
+  .year-mark { position: absolute; right: 80px; top: 72px;
+               font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #c19a3a;
+               background: #ede4d0; padding-left: 14px; }
+
+  .section-label { position: absolute; left: 80px; top: 120px;
+                   font-family: 'Fraunces', serif; font-style: italic;
+                   font-size: 18px; color: #5a7a5f; }
+  .heading { position: absolute; left: 80px; top: 152px; width: 720px;
+             font-family: 'Fraunces', Georgia, serif;
+             font-size: 60px; line-height: 1.08; font-weight: 700; color: #283b2e; letter-spacing: -0.01em; }
+  .lead { position: absolute; left: 80px; top: 320px; width: 600px;
+          font-family: 'Fraunces', serif;
+          font-size: 18px; line-height: 1.7; color: #486052; font-weight: 500; }
+
+  .timeline-card { position: absolute; right: 80px; top: 152px; width: 400px;
+                   background-color: #5a7a5f; padding: 36px 32px; color: #ede4d0; }
+  .tl-label { font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #c19a3a; }
+  .tl-rule  { width: 32px; height: 2px; background: #c19a3a; margin: 12px 0 24px; }
+  .tl-row   { display: flex; gap: 14px; padding: 14px 0; border-top: 1px solid rgba(237, 228, 208, 0.2);
+              font-size: 15px; line-height: 1.45; color: #ede4d0; }
+  .tl-row:first-of-type { border-top: 0; }
+  .tl-dot   { width: 8px; height: 8px; border-radius: 9999px; background: #c19a3a;
+              margin-top: 8px; flex-shrink: 0; }
+
+  .footer { position: absolute; left: 80px; bottom: 36px;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.28em; color: #5a7a5f; opacity: 0.7;
+            text-transform: uppercase; }
+  .page-num { position: absolute; right: 80px; bottom: 36px;
+              font-family: 'Fraunces', serif; font-style: italic; font-size: 14px; color: #5a7a5f; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="org-mark">ARDEN FOUNDATION</div>
+  <div class="year-mark">YEAR IN REVIEW · 2025</div>
+
+  <div class="section-label">§ year in review</div>
+  <div class="heading" data-slot="heading">A year of careful, quiet growth</div>
+  <div class="lead"    data-slot="lead">A long-form paragraph that frames the year — the conditions we operated in, the choices we made, and the difference between the year we expected and the year we actually had.</div>
+
+  <div class="timeline-card">
+    <div class="tl-label">MILESTONES</div>
+    <div class="tl-rule"></div>
+    <div class="tl-row"><div class="tl-dot"></div><div data-slot="milestone_1">Q1 · Launched the new fellowship program with 12 inaugural fellows.</div></div>
+    <div class="tl-row"><div class="tl-dot"></div><div data-slot="milestone_2">Q2 · Expanded into two new regions through partner organizations.</div></div>
+    <div class="tl-row"><div class="tl-dot"></div><div data-slot="milestone_3">Q3 · Released the open-data report covered across major outlets.</div></div>
+    <div class="tl-row"><div class="tl-dot"></div><div data-slot="milestone_4">Q4 · Closed the year above target on both endowment and reach.</div></div>
+  </div>
+
+  <div class="footer">— SECTION I —</div>
+  <div class="page-num">02</div>
+</body>
+</html>

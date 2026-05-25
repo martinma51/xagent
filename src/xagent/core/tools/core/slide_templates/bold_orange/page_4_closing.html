@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" data-template="bold_orange" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #ff6a1f; color: #0a0a0a; position: relative; overflow: hidden; }
+  .block-dark { position: absolute; left: 0; top: 0; width: 240px; height: 720px;
+                background-color: #0a0a0a; }
+  .mark { position: absolute; left: 80px; top: 80px;
+          font-family: 'Archivo Black', sans-serif; font-size: 60px; color: #ff6a1f; line-height: 1; }
+  .mark-rule { position: absolute; left: 80px; top: 160px; width: 32px; height: 4px; background: #ff6a1f; }
+
+  .stack { position: absolute; left: 340px; top: 220px; right: 80px; }
+  .headline { font-family: 'Archivo Black', 'Arial Black', sans-serif;
+              font-size: 144px; line-height: 0.92; color: #0a0a0a;
+              letter-spacing: -0.03em; text-transform: uppercase; }
+  .tagline  { font-size: 20px; font-weight: 500; line-height: 1.55; color: #0a0a0a;
+              margin-top: 36px; max-width: 720px; }
+  .contacts { margin-top: 56px; display: flex; gap: 36px; }
+  .contact-tag { padding: 8px 16px; background: #0a0a0a; color: #ff6a1f;
+                 font-size: 14px; font-weight: 700; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+  <div class="block-dark"></div>
+  <div class="mark">◯</div>
+  <div class="mark-rule"></div>
+
+  <div class="stack">
+    <div class="headline" data-slot="headline">Let's go.</div>
+    <div class="tagline"  data-slot="tagline">Short closing line. Either an ask, a thank-you, or a reminder of where to follow up.</div>
+    <div class="contacts">
+      <div class="contact-tag" data-slot="contact_1">contact@example.com</div>
+      <div class="contact-tag" data-slot="contact_2">example.com / slack #channel</div>
+    </div>
+  </div>
+</body>
+</html>

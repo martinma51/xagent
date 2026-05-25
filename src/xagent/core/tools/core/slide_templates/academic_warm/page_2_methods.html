@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-template="academic_warm" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px;
+         font-family: 'EB Garamond', Georgia, serif;
+         background-color: #f1e8d8; color: #2b1d0e; position: relative; overflow: hidden; }
+  .top-rule { position: absolute; left: 80px; right: 80px; top: 60px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+  .section-label { position: absolute; left: 80px; top: 68px;
+                   font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+                   letter-spacing: 0.32em; color: #7c5a2a; background: #f1e8d8; padding-right: 12px; }
+  .heading { position: absolute; left: 80px; top: 110px; width: 1120px;
+             font-size: 56px; line-height: 1.08; font-weight: 500; color: #2b1d0e; letter-spacing: -0.005em; }
+
+  .method { position: absolute; top: 280px; width: 340px; }
+  .m-1 { left: 80px;  }
+  .m-2 { left: 470px; }
+  .m-3 { left: 860px; }
+  .roman { font-family: 'EB Garamond', serif; font-size: 28px; font-style: italic; color: #7c5a2a; }
+  .m-rule { width: 32px; height: 1px; background: #7c5a2a; margin: 14px 0 20px; }
+  .m-title { font-size: 28px; line-height: 1.2; font-weight: 500; color: #2b1d0e; }
+  .m-body  { font-size: 17px; line-height: 1.65; color: #2b1d0e; margin-top: 16px; }
+
+  .divider-1 { position: absolute; left: 430px; top: 300px; width: 1px; height: 280px;
+               background: #7c5a2a; opacity: 0.3; }
+  .divider-2 { position: absolute; left: 820px; top: 300px; width: 1px; height: 280px;
+               background: #7c5a2a; opacity: 0.3; }
+  .page-num { position: absolute; right: 80px; bottom: 60px;
+              font-family: 'EB Garamond', serif; font-style: italic;
+              font-size: 16px; color: #7c5a2a; }
+  .pg-rule { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background: #7c5a2a; opacity: 0.4; }
+</style>
+</head>
+<body>
+  <div class="top-rule"></div>
+  <div class="section-label">§ METHODS</div>
+  <div class="heading" data-slot="heading">A three-part approach</div>
+
+  <div class="divider-1"></div>
+  <div class="divider-2"></div>
+
+  <div class="method m-1">
+    <div class="roman">i.</div>
+    <div class="m-rule"></div>
+    <div class="m-title" data-slot="method_1_title">Close reading</div>
+    <div class="m-body"  data-slot="method_1_body">A short paragraph describing the first methodological move — what we look for in the source and how we record it.</div>
+  </div>
+  <div class="method m-2">
+    <div class="roman">ii.</div>
+    <div class="m-rule"></div>
+    <div class="m-title" data-slot="method_2_title">Comparison</div>
+    <div class="m-body"  data-slot="method_2_body">A short paragraph describing the second methodological move — how we hold the texts in conversation with each other.</div>
+  </div>
+  <div class="method m-3">
+    <div class="roman">iii.</div>
+    <div class="m-rule"></div>
+    <div class="m-title" data-slot="method_3_title">Synthesis</div>
+    <div class="m-body"  data-slot="method_3_body">A short paragraph describing the third methodological move — how we draw the threads together into a single argument.</div>
+  </div>
+
+  <div class="pg-rule"></div>
+  <div class="page-num">— iii —</div>
+</body>
+</html>

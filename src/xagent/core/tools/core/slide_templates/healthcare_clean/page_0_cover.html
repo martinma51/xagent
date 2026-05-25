@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-template="healthcare_clean" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Manrope', system-ui, sans-serif;
+         background-color: #ffffff; color: #0e2a35; position: relative; overflow: hidden; }
+  .pill-top { position: absolute; right: -180px; top: -180px; width: 540px; height: 540px;
+              background-color: #e0f3f1; border-radius: 9999px; }
+  .pill-mid { position: absolute; right: 80px; top: 280px; width: 240px; height: 240px;
+              background-color: #c2e9e4; border-radius: 9999px; }
+  .pill-small { position: absolute; right: 360px; top: 480px; width: 80px; height: 80px;
+                background-color: #2fb6a0; border-radius: 9999px; opacity: 0.85; }
+
+  .cross-mark { position: absolute; right: 130px; top: 350px; width: 100px; height: 100px; }
+  .cross-mark::before, .cross-mark::after { content: ""; position: absolute; background: #ffffff; border-radius: 6px; }
+  .cross-mark::before { left: 42px; top: 12px; width: 16px; height: 76px; }
+  .cross-mark::after  { left: 12px; top: 42px; width: 76px; height: 16px; }
+
+  .eyebrow { position: absolute; left: 80px; top: 80px; padding: 8px 18px;
+             background-color: #e0f3f1; color: #1b6f63; border-radius: 9999px;
+             font-size: 12px; font-weight: 700; letter-spacing: 0.18em; }
+  .title { position: absolute; left: 80px; top: 200px; width: 760px;
+           font-size: 84px; line-height: 1.05; font-weight: 700; color: #0e2a35; letter-spacing: -0.02em; }
+  .title .accent { color: #2fb6a0; }
+  .subtitle { position: absolute; left: 80px; top: 480px; width: 620px;
+              font-size: 19px; line-height: 1.6; color: #486975; font-weight: 500; }
+  .author { position: absolute; left: 80px; bottom: 72px;
+            font-size: 14px; font-weight: 600; color: #0e2a35; letter-spacing: 0.02em; }
+  .date   { position: absolute; left: 80px; bottom: 48px; font-size: 13px; color: #2fb6a0;
+            font-weight: 600; letter-spacing: 0.12em; }
+  .teal-bar { position: absolute; left: 0; bottom: 0; width: 320px; height: 6px; background: #2fb6a0; }
+</style>
+</head>
+<body>
+  <div class="pill-top"></div>
+  <div class="pill-mid"></div>
+  <div class="pill-small"></div>
+  <div class="cross-mark"></div>
+  <div class="eyebrow" data-slot="eyebrow">CLINICAL BRIEFING</div>
+  <div class="title" data-slot="title">A clearer path to better outcomes</div>
+  <div class="subtitle" data-slot="subtitle">A short framing line that explains the audience, the patient population, or the question this brief is answering.</div>
+  <div class="author" data-slot="author">Dr. Lee · Department of Cardiology</div>
+  <div class="date"   data-slot="date">MAY 2026</div>
+  <div class="teal-bar"></div>
+</body>
+</html>

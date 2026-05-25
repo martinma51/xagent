@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en" data-template="editorial_serif" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-color: #6b1a2c; color: #f3ece1; position: relative; overflow: hidden; }
+  .frame { position: absolute; left: 80px; top: 80px; right: 80px; bottom: 80px;
+           border: 1px solid rgba(243, 236, 225, 0.4); padding: 64px 80px; box-sizing: border-box; }
+  .open-quote { font-family: 'Playfair Display', Georgia, serif; font-size: 200px; line-height: 0.6;
+                color: rgba(243, 236, 225, 0.35); height: 60px; margin-bottom: 8px; }
+  .quote { font-family: 'Playfair Display', Georgia, serif; font-style: italic;
+           font-size: 52px; line-height: 1.25; font-weight: 500; color: #f3ece1;
+           max-width: 980px; letter-spacing: -0.005em; }
+  .div-rule { width: 56px; height: 1px; background: #e9c46a; margin-top: 48px; }
+  .attribution { font-family: 'Inter', sans-serif; font-size: 14px;
+                 letter-spacing: 0.18em; color: #e9c46a; margin-top: 24px; font-weight: 600;
+                 text-transform: uppercase; }
+  .context { font-family: 'Playfair Display', serif; font-style: italic;
+             font-size: 18px; line-height: 1.5; color: rgba(243, 236, 225, 0.75); margin-top: 12px;
+             max-width: 760px; }
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="open-quote">“</div>
+    <div class="quote" data-slot="quote">The story is not in what we built, but in what we chose not to build — and what that choice has freed us to do next.</div>
+    <div class="div-rule"></div>
+    <div class="attribution" data-slot="attribution">— Jane Reed, Head of Design</div>
+    <div class="context" data-slot="context">In an internal review, looking back on the trade-offs that shaped the last quarter.</div>
+  </div>
+</body>
+</html>
