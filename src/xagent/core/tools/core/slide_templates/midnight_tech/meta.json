@@ -1,0 +1,73 @@
+{
+  "id": "midnight_tech",
+  "name": "Midnight Tech",
+  "description": "Dark gradient deck with glowing accents — built for technical product launches, AI demos, and engineering presentations.",
+  "category": "Tech",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "eyebrow":  { "type": "text", "max_length": 40,  "required": false, "hint": "Short label above the title, e.g. 'PRODUCT LAUNCH'." },
+        "title":    { "type": "text", "max_length": 80,  "required": true,  "hint": "Main deck title, 1-2 lines." },
+        "subtitle": { "type": "text", "max_length": 160, "required": false, "hint": "One-sentence framing." },
+        "author":   { "type": "text", "max_length": 60,  "required": false, "hint": "Speaker name or team." },
+        "date":     { "type": "text", "max_length": 24,  "required": false, "hint": "Date string." }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_agenda.html",
+      "layout": "agenda",
+      "slots": {
+        "section_label": { "type": "text", "max_length": 24,  "required": false, "hint": "Small label, default 'AGENDA'." },
+        "heading":       { "type": "text", "max_length": 60,  "required": true,  "hint": "Page heading." },
+        "item_1":        { "type": "text", "max_length": 80,  "required": true },
+        "item_2":        { "type": "text", "max_length": 80,  "required": true },
+        "item_3":        { "type": "text", "max_length": 80,  "required": true },
+        "item_4":        { "type": "text", "max_length": 80,  "required": false },
+        "item_5":        { "type": "text", "max_length": 80,  "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_section.html",
+      "layout": "section_divider",
+      "slots": {
+        "number":      { "type": "text", "max_length": 4,   "required": false, "hint": "Section number, e.g. '01'." },
+        "title":       { "type": "text", "max_length": 60,  "required": true,  "hint": "Section title." },
+        "description": { "type": "text", "max_length": 200, "required": false, "hint": "1-2 sentence framing of the section." }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_features.html",
+      "layout": "three_features",
+      "slots": {
+        "heading":       { "type": "text", "max_length": 60,  "required": true },
+        "subheading":    { "type": "text", "max_length": 120, "required": false },
+        "feat_1_title":  { "type": "text", "max_length": 30,  "required": true },
+        "feat_1_body":   { "type": "text", "max_length": 140, "required": true },
+        "feat_2_title":  { "type": "text", "max_length": 30,  "required": true },
+        "feat_2_body":   { "type": "text", "max_length": 140, "required": true },
+        "feat_3_title":  { "type": "text", "max_length": 30,  "required": true },
+        "feat_3_body":   { "type": "text", "max_length": 140, "required": true }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline":  { "type": "text", "max_length": 40,  "required": true,  "hint": "Big closing line, e.g. 'Thank you' or 'Get in touch'." },
+        "tagline":   { "type": "text", "max_length": 120, "required": false, "hint": "One supporting sentence." },
+        "contact_1": { "type": "text", "max_length": 60,  "required": false, "hint": "First contact line, e.g. an email." },
+        "contact_2": { "type": "text", "max_length": 60,  "required": false, "hint": "Second contact line, e.g. a URL." }
+      }
+    }
+  ]
+}

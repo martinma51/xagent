@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en" data-template="midnight_tech" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-image: linear-gradient(135deg, rgb(8, 11, 30), rgb(28, 22, 79)); color: rgb(248, 250, 252); }
+  .grid-overlay { position: absolute; inset: 0; opacity: 0.18;
+    background-image:
+      linear-gradient(rgba(99,102,241,0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99,102,241,0.15) 1px, transparent 1px);
+    background-size: 64px 64px; }
+  .glow-a { position: absolute; left: 880px; top: 120px;  width: 320px; height: 320px;
+            background-color: rgba(99, 102, 241, 0.18); border-radius: 9999px; filter: blur(8px); }
+  .glow-b { position: absolute; left: 1020px; top: 360px; width: 200px; height: 200px;
+            background-color: rgba(168, 85, 247, 0.20); border-radius: 9999px; filter: blur(6px); }
+  .glow-c { position: absolute; left: 820px; top: 460px;  width: 140px; height: 140px;
+            background-color: rgba(56, 189, 248, 0.16); border-radius: 9999px; filter: blur(5px); }
+  .eyebrow { position: absolute; left: 80px; top: 80px; height: 36px; padding: 0 16px;
+             background-color: rgba(99, 102, 241, 0.22); border-radius: 9999px;
+             font-size: 13px; font-weight: 600; letter-spacing: 0.18em; color: rgb(196, 181, 253);
+             display: flex; align-items: center; }
+  .title    { position: absolute; left: 80px; top: 200px; width: 880px;
+              font-size: 76px; line-height: 1.05; font-weight: 800; color: rgb(255, 255, 255); }
+  .subtitle { position: absolute; left: 80px; top: 420px; width: 760px;
+              font-size: 22px; line-height: 1.5; color: rgb(148, 163, 184); }
+  .author { position: absolute; left: 80px; top: 612px; font-size: 15px; font-weight: 500; color: rgb(226, 232, 240); }
+  .date   { position: absolute; left: 80px; top: 636px; font-size: 13px; color: rgb(100, 116, 139); }
+  .rule   { position: absolute; left: 80px; top: 600px; width: 60px; height: 3px; background-color: rgb(99, 102, 241); border-radius: 2px; }
+</style>
+</head>
+<body>
+  <div class="grid-overlay"></div>
+  <div class="glow-a"></div>
+  <div class="glow-b"></div>
+  <div class="glow-c"></div>
+  <div class="eyebrow" data-slot="eyebrow">PRODUCT LAUNCH</div>
+  <div class="title"    data-slot="title">Your Title Goes Here</div>
+  <div class="subtitle" data-slot="subtitle">A short framing sentence that gives the audience context for what they're about to see.</div>
+  <div class="rule"></div>
+  <div class="author" data-slot="author">Speaker Name</div>
+  <div class="date"   data-slot="date">2026.05.22</div>
+</body>
+</html>

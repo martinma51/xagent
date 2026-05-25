@@ -48,6 +48,7 @@ const zh = {
     monitoring: "监控",
     knowledgeBase: "知识库",
     knowledgeBaseDetail: "知识库详情",
+    slides: "幻灯片",
     userManagement: "用户管理",
     adminMcp: "公共 MCP",
     login: "登录",

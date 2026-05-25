@@ -1,0 +1,95 @@
+{
+  "id": "data_report",
+  "name": "Data Report",
+  "description": "Dashboard-style layout with KPI tiles, period-over-period comparisons, and an insights grid — built for quarterly reviews, weekly metrics readouts, and analytics share-outs.",
+  "category": "Analytics",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover_with_headline_metric",
+      "slots": {
+        "report_label": { "type": "text", "max_length": 30,  "required": false, "hint": "Default 'REPORT'." },
+        "title":        { "type": "text", "max_length": 80,  "required": true },
+        "period":       { "type": "text", "max_length": 30,  "required": false, "hint": "e.g. 'Q1 2026'." },
+        "headline_value": { "type": "text", "max_length": 12, "required": false, "hint": "Single big number for the cover, e.g. '+24%'." },
+        "headline_label": { "type": "text", "max_length": 40, "required": false, "hint": "What that number measures." },
+        "author":       { "type": "text", "max_length": 60,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_kpis.html",
+      "layout": "kpi_row",
+      "slots": {
+        "heading":    { "type": "text", "max_length": 60,  "required": true },
+        "subheading": { "type": "text", "max_length": 140, "required": false },
+        "kpi_1_value": { "type": "text", "max_length": 12,  "required": true },
+        "kpi_1_label": { "type": "text", "max_length": 32,  "required": true },
+        "kpi_1_delta": { "type": "text", "max_length": 16,  "required": false, "hint": "Signed change, e.g. '+12%'." },
+        "kpi_2_value": { "type": "text", "max_length": 12,  "required": true },
+        "kpi_2_label": { "type": "text", "max_length": 32,  "required": true },
+        "kpi_2_delta": { "type": "text", "max_length": 16,  "required": false },
+        "kpi_3_value": { "type": "text", "max_length": 12,  "required": true },
+        "kpi_3_label": { "type": "text", "max_length": 32,  "required": true },
+        "kpi_3_delta": { "type": "text", "max_length": 16,  "required": false },
+        "kpi_4_value": { "type": "text", "max_length": 12,  "required": true },
+        "kpi_4_label": { "type": "text", "max_length": 32,  "required": true },
+        "kpi_4_delta": { "type": "text", "max_length": 16,  "required": false }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_comparison.html",
+      "layout": "period_comparison",
+      "slots": {
+        "heading":  { "type": "text", "max_length": 60,  "required": true },
+        "col_a_label": { "type": "text", "max_length": 24, "required": false, "hint": "e.g. 'LAST PERIOD'." },
+        "col_b_label": { "type": "text", "max_length": 24, "required": false, "hint": "e.g. 'THIS PERIOD'." },
+        "row_1_label": { "type": "text", "max_length": 32, "required": true },
+        "row_1_a":     { "type": "text", "max_length": 16, "required": true },
+        "row_1_b":     { "type": "text", "max_length": 16, "required": true },
+        "row_2_label": { "type": "text", "max_length": 32, "required": true },
+        "row_2_a":     { "type": "text", "max_length": 16, "required": true },
+        "row_2_b":     { "type": "text", "max_length": 16, "required": true },
+        "row_3_label": { "type": "text", "max_length": 32, "required": true },
+        "row_3_a":     { "type": "text", "max_length": 16, "required": true },
+        "row_3_b":     { "type": "text", "max_length": 16, "required": true },
+        "row_4_label": { "type": "text", "max_length": 32, "required": false },
+        "row_4_a":     { "type": "text", "max_length": 16, "required": false },
+        "row_4_b":     { "type": "text", "max_length": 16, "required": false }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_insights.html",
+      "layout": "insights_grid",
+      "slots": {
+        "heading":       { "type": "text", "max_length": 60,  "required": true },
+        "insight_1_title": { "type": "text", "max_length": 40,  "required": true },
+        "insight_1_body":  { "type": "text", "max_length": 200, "required": true },
+        "insight_2_title": { "type": "text", "max_length": 40,  "required": true },
+        "insight_2_body":  { "type": "text", "max_length": 200, "required": true },
+        "insight_3_title": { "type": "text", "max_length": 40,  "required": true },
+        "insight_3_body":  { "type": "text", "max_length": 200, "required": true }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_next_steps.html",
+      "layout": "next_steps_checklist",
+      "slots": {
+        "heading":  { "type": "text", "max_length": 60,  "required": true },
+        "subheading": { "type": "text", "max_length": 140, "required": false },
+        "step_1": { "type": "text", "max_length": 120, "required": true },
+        "step_2": { "type": "text", "max_length": 120, "required": true },
+        "step_3": { "type": "text", "max_length": 120, "required": true },
+        "step_4": { "type": "text", "max_length": 120, "required": false },
+        "owner_label": { "type": "text", "max_length": 60, "required": false, "hint": "e.g. 'Owner: Data team'." }
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en" data-template="midnight_tech" data-page="3">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; font-family: 'Inter', system-ui, sans-serif;
+         background-image: linear-gradient(135deg, rgb(8, 11, 30), rgb(28, 22, 79)); color: rgb(248, 250, 252); }
+  .grid-overlay { position: absolute; inset: 0; opacity: 0.10;
+    background-image: linear-gradient(rgba(99,102,241,0.15) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(99,102,241,0.15) 1px, transparent 1px);
+    background-size: 64px 64px; }
+  .heading    { position: absolute; left: 80px; top: 80px;  width: 1100px;
+                font-size: 52px; font-weight: 700; color: rgb(255, 255, 255); }
+  .subheading { position: absolute; left: 80px; top: 158px; width: 1100px;
+                font-size: 18px; line-height: 1.55; color: rgb(148, 163, 184); }
+  .card { position: absolute; top: 260px; width: 360px; height: 360px;
+          background-color: rgba(30, 41, 59, 0.55); border: 1px solid rgba(99, 102, 241, 0.30);
+          border-radius: 20px; }
+  .card-accent { position: absolute; left: 0; top: 0; width: 100%; height: 3px;
+                 background-color: rgb(99, 102, 241); border-top-left-radius: 20px; border-top-right-radius: 20px; }
+  .icon { position: absolute; left: 28px; top: 32px; width: 56px; height: 56px;
+          background-color: rgba(99, 102, 241, 0.18); border-radius: 14px;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 24px; font-weight: 700; color: rgb(196, 181, 253); }
+  .card-title { position: absolute; left: 28px; top: 116px; width: 300px;
+                font-size: 24px; font-weight: 700; color: rgb(255, 255, 255); }
+  .card-body  { position: absolute; left: 28px; top: 164px; width: 304px;
+                font-size: 15px; line-height: 1.6; color: rgb(203, 213, 225); }
+</style>
+</head>
+<body>
+  <div class="grid-overlay"></div>
+  <div class="heading"    data-slot="heading">Three things that make this different</div>
+  <div class="subheading" data-slot="subheading">A one-line subtitle that sets up the three differentiators below.</div>
+
+  <div class="card" style="left: 80px;">
+    <div class="card-accent"></div>
+    <div class="icon">01</div>
+    <div class="card-title" data-slot="feat_1_title">Feature one</div>
+    <div class="card-body"  data-slot="feat_1_body">Short description of the first feature explaining the user benefit in plain language.</div>
+  </div>
+
+  <div class="card" style="left: 460px;">
+    <div class="card-accent"></div>
+    <div class="icon">02</div>
+    <div class="card-title" data-slot="feat_2_title">Feature two</div>
+    <div class="card-body"  data-slot="feat_2_body">Short description of the second feature explaining the user benefit in plain language.</div>
+  </div>
+
+  <div class="card" style="left: 840px;">
+    <div class="card-accent"></div>
+    <div class="icon">03</div>
+    <div class="card-title" data-slot="feat_3_title">Feature three</div>
+    <div class="card-body"  data-slot="feat_3_body">Short description of the third feature explaining the user benefit in plain language.</div>
+  </div>
+</body>
+</html>

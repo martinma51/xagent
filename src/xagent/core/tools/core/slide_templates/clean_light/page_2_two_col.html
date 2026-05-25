@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" data-template="clean_light" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; background-color: rgb(250, 250, 247); color: rgb(26, 31, 46); font-family: 'Inter', system-ui, sans-serif; }
+  .pagenum { position: absolute; left: 80px; top: 80px; font-size: 11px; font-weight: 600; letter-spacing: 0.32em; color: rgb(22, 101, 52); }
+  .rule-h { position: absolute; left: 80px; top: 105px; width: 50px; height: 1px; background-color: rgb(22, 101, 52); }
+  .heading { position: absolute; left: 80px; top: 140px; width: 1120px; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; font-size: 56px; line-height: 1.1; }
+  .col { position: absolute; top: 280px; width: 480px; }
+  .col-marker { position: absolute; left: 0; top: 0; width: 32px; height: 32px; background-color: rgb(255, 255, 255); border: 1px solid rgb(22, 101, 52); display: flex; align-items: center; justify-content: center; font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 16px; color: rgb(22, 101, 52); }
+  .col-title { position: absolute; left: 48px; top: 4px; font-size: 22px; font-weight: 600; color: rgb(26, 31, 46); }
+  .col-rule { position: absolute; left: 0; top: 64px; width: 60px; height: 1px; background-color: rgba(26, 31, 46, 0.16); }
+  .col-body { position: absolute; left: 0; top: 88px; width: 480px; font-size: 16px; line-height: 1.7; color: rgb(55, 65, 81); }
+  .col-divider { position: absolute; left: 640px; top: 280px; width: 1px; height: 320px; background-color: rgba(26, 31, 46, 0.10); }
+  .footer-rule { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background-color: rgba(26, 31, 46, 0.10); }
+</style>
+</head>
+<body>
+  <div class="pagenum">02</div>
+  <div class="rule-h"></div>
+  <div class="heading" data-slot="heading">Two perspectives on the same problem</div>
+  <div class="col" style="left: 80px;">
+    <div class="col-marker">A</div>
+    <div class="col-title" data-slot="left_title">First angle</div>
+    <div class="col-rule"></div>
+    <div class="col-body" data-slot="left_body">A short body paragraph describing the first option, its assumptions, and the tradeoffs that come with it.</div>
+  </div>
+  <div class="col-divider"></div>
+  <div class="col" style="left: 720px;">
+    <div class="col-marker">B</div>
+    <div class="col-title" data-slot="right_title">Second angle</div>
+    <div class="col-rule"></div>
+    <div class="col-body" data-slot="right_body">A short body paragraph describing the second option, the conditions under which it is preferred, and what success looks like.</div>
+  </div>
+  <div class="footer-rule"></div>
+</body>
+</html>

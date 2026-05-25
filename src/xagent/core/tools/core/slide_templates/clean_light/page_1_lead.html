@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en" data-template="clean_light" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; background-color: rgb(250, 250, 247); color: rgb(26, 31, 46); font-family: 'Inter', system-ui, sans-serif; }
+  .pagenum { position: absolute; left: 80px; top: 80px; font-size: 11px; font-weight: 600; letter-spacing: 0.32em; color: rgb(22, 101, 52); }
+  .rule-h { position: absolute; left: 80px; top: 105px; width: 50px; height: 1px; background-color: rgb(22, 101, 52); }
+  .heading { position: absolute; left: 80px; top: 140px; width: 1120px; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 600; font-size: 60px; line-height: 1.1; }
+  .body { position: absolute; left: 80px; top: 280px; width: 600px; font-size: 18px; line-height: 1.7; color: rgb(55, 65, 81); }
+  .callout { position: absolute; right: 80px; top: 280px; width: 460px; padding: 36px 36px 32px 36px; background-color: rgb(255, 255, 255); border: 1px solid rgba(26, 31, 46, 0.12); border-left: 4px solid rgb(22, 101, 52); }
+  .callout-label { position: absolute; left: 36px; top: 28px; font-size: 11px; font-weight: 600; letter-spacing: 0.28em; color: rgb(22, 101, 52); }
+  .callout-text { position: absolute; left: 36px; top: 64px; right: 36px; font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; font-size: 26px; line-height: 1.35; color: rgb(26, 31, 46); }
+  .footer-rule { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background-color: rgba(26, 31, 46, 0.10); }
+</style>
+</head>
+<body>
+  <div class="pagenum">01</div>
+  <div class="rule-h"></div>
+  <div class="heading" data-slot="heading">Heading for this section</div>
+  <div class="body" data-slot="body">A measured opening paragraph that introduces the topic in plain language, sets expectations for what the audience is about to read, and leads naturally into the takeaway on the right.</div>
+  <div class="callout">
+    <div class="callout-label" data-slot="callout_label">KEY TAKEAWAY</div>
+    <div class="callout-text" data-slot="callout_text">The single sentence that, if remembered, makes this page worth the audience's time.</div>
+  </div>
+  <div class="footer-rule"></div>
+</body>
+</html>

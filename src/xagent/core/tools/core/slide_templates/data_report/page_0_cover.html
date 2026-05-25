@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-template="data_report" data-page="0">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; background-color: rgb(245, 247, 250); color: rgb(15, 23, 42); font-family: 'Inter', system-ui, sans-serif; }
+  .accent-bar { position: absolute; left: 0; top: 0; width: 8px; height: 720px; background-color: rgb(37, 99, 235); }
+  .pill { position: absolute; left: 80px; top: 80px; height: 28px; padding: 0 14px; background-color: rgb(37, 99, 235); border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.16em; color: rgb(255, 255, 255); display: flex; align-items: center; }
+  .title { position: absolute; left: 80px; top: 150px; width: 700px; font-size: 64px; line-height: 1.05; font-weight: 700; color: rgb(15, 23, 42); letter-spacing: -0.02em; }
+  .period { position: absolute; left: 80px; top: 360px; font-size: 14px; font-weight: 600; letter-spacing: 0.2em; color: rgb(100, 116, 139); }
+  .author { position: absolute; left: 80px; bottom: 80px; font-size: 14px; color: rgb(71, 85, 105); }
+  .card { position: absolute; right: 80px; top: 130px; width: 380px; height: 420px; background-color: rgb(255, 255, 255); border: 1px solid rgb(226, 232, 240); border-radius: 12px; }
+  .card-label { position: absolute; left: 32px; top: 28px; font-size: 11px; font-weight: 700; letter-spacing: 0.18em; color: rgb(100, 116, 139); }
+  .card-rule { position: absolute; left: 32px; top: 56px; width: 32px; height: 2px; background-color: rgb(37, 99, 235); }
+  .card-value { position: absolute; left: 32px; top: 130px; width: 320px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 128px; line-height: 1.0; color: rgb(37, 99, 235); letter-spacing: -0.04em; }
+  .card-context { position: absolute; left: 32px; top: 310px; right: 32px; font-size: 14px; line-height: 1.55; color: rgb(71, 85, 105); }
+</style>
+</head>
+<body>
+  <div class="accent-bar"></div>
+  <div class="pill" data-slot="report_label">REPORT</div>
+  <div class="title" data-slot="title">Report Title Goes Here</div>
+  <div class="period" data-slot="period">Q1 2026</div>
+  <div class="author" data-slot="author">Data Team</div>
+
+  <div class="card">
+    <div class="card-label" data-slot="headline_label">HEADLINE METRIC</div>
+    <div class="card-rule"></div>
+    <div class="card-value" data-slot="headline_value">+24%</div>
+    <div class="card-context">vs prior period — see the breakdown on the following pages.</div>
+  </div>
+</body>
+</html>

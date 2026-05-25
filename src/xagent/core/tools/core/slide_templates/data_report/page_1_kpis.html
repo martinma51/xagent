@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" data-template="data_report" data-page="1">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; background-color: rgb(245, 247, 250); color: rgb(15, 23, 42); font-family: 'Inter', system-ui, sans-serif; }
+  .accent-bar { position: absolute; left: 0; top: 0; width: 8px; height: 720px; background-color: rgb(37, 99, 235); }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px; font-size: 36px; font-weight: 700; color: rgb(15, 23, 42); }
+  .subheading { position: absolute; left: 80px; top: 130px; width: 1100px; font-size: 15px; line-height: 1.55; color: rgb(71, 85, 105); }
+
+  .kpi { position: absolute; top: 220px; width: 260px; height: 280px; background-color: rgb(255, 255, 255); border: 1px solid rgb(226, 232, 240); border-radius: 12px; }
+  .kpi-label { position: absolute; left: 24px; top: 24px; right: 24px; font-size: 12px; font-weight: 600; letter-spacing: 0.10em; color: rgb(100, 116, 139); text-transform: uppercase; }
+  .kpi-value { position: absolute; left: 24px; top: 80px; width: 220px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 56px; line-height: 1.0; color: rgb(15, 23, 42); letter-spacing: -0.03em; }
+  .kpi-delta { position: absolute; left: 24px; top: 200px; height: 28px; padding: 0 12px; border-radius: 999px; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 13px; display: flex; align-items: center; }
+  .kpi-delta-up   { background-color: rgb(220, 252, 231); color: rgb(22, 101, 52); }
+  .kpi-delta-down { background-color: rgb(254, 226, 226); color: rgb(153, 27, 27); }
+  .footer-line { position: absolute; left: 80px; right: 80px; bottom: 80px; height: 1px; background-color: rgb(226, 232, 240); }
+  .pagenum { position: absolute; right: 80px; bottom: 50px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: rgb(148, 163, 184); }
+</style>
+</head>
+<body>
+  <div class="accent-bar"></div>
+  <div class="heading"    data-slot="heading">Key performance indicators</div>
+  <div class="subheading" data-slot="subheading">The four numbers that summarise the period and the change from the prior comparable window.</div>
+
+  <div class="kpi" style="left: 80px;">
+    <div class="kpi-label" data-slot="kpi_1_label">First metric</div>
+    <div class="kpi-value" data-slot="kpi_1_value">12.4K</div>
+    <div class="kpi-delta kpi-delta-up" data-slot="kpi_1_delta">+12.3%</div>
+  </div>
+  <div class="kpi" style="left: 360px;">
+    <div class="kpi-label" data-slot="kpi_2_label">Second metric</div>
+    <div class="kpi-value" data-slot="kpi_2_value">$3.2M</div>
+    <div class="kpi-delta kpi-delta-up" data-slot="kpi_2_delta">+8.1%</div>
+  </div>
+  <div class="kpi" style="left: 640px;">
+    <div class="kpi-label" data-slot="kpi_3_label">Third metric</div>
+    <div class="kpi-value" data-slot="kpi_3_value">94.1%</div>
+    <div class="kpi-delta kpi-delta-up" data-slot="kpi_3_delta">+2.4pp</div>
+  </div>
+  <div class="kpi" style="left: 920px;">
+    <div class="kpi-label" data-slot="kpi_4_label">Fourth metric</div>
+    <div class="kpi-value" data-slot="kpi_4_value">5.8s</div>
+    <div class="kpi-delta kpi-delta-down" data-slot="kpi_4_delta">-0.4s</div>
+  </div>
+
+  <div class="footer-line"></div>
+  <div class="pagenum">02</div>
+</body>
+</html>

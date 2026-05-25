@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-template="data_report" data-page="4">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; background-color: rgb(245, 247, 250); color: rgb(15, 23, 42); font-family: 'Inter', system-ui, sans-serif; }
+  .accent-bar { position: absolute; left: 0; top: 0; width: 8px; height: 720px; background-color: rgb(37, 99, 235); }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px; font-size: 36px; font-weight: 700; color: rgb(15, 23, 42); }
+  .subheading { position: absolute; left: 80px; top: 130px; width: 1100px; font-size: 15px; line-height: 1.55; color: rgb(71, 85, 105); }
+
+  .panel { position: absolute; left: 80px; top: 200px; right: 80px; height: 360px; background-color: rgb(255, 255, 255); border: 1px solid rgb(226, 232, 240); border-radius: 12px; }
+  .step { position: absolute; left: 36px; right: 36px; height: 64px; }
+  .step-num { position: absolute; left: 0; top: 12px; width: 40px; height: 40px; border: 1.5px solid rgb(37, 99, 235); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 15px; color: rgb(37, 99, 235); }
+  .step-text { position: absolute; left: 64px; top: 22px; right: 0; font-size: 17px; line-height: 1.5; font-weight: 500; color: rgb(15, 23, 42); }
+  .step-divider { position: absolute; left: 36px; right: 36px; height: 1px; background-color: rgb(241, 245, 249); }
+
+  .owner { position: absolute; left: 80px; bottom: 80px; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; color: rgb(100, 116, 139); text-transform: uppercase; }
+</style>
+</head>
+<body>
+  <div class="accent-bar"></div>
+  <div class="heading"    data-slot="heading">Next steps</div>
+  <div class="subheading" data-slot="subheading">What we'll commit to this period and roughly when each item lands.</div>
+
+  <div class="panel">
+    <div class="step" style="top: 24px;">
+      <div class="step-num">01</div>
+      <div class="step-text" data-slot="step_1">First action item — concrete, owner attached.</div>
+    </div>
+    <div class="step-divider" style="top: 100px;"></div>
+    <div class="step" style="top: 110px;">
+      <div class="step-num">02</div>
+      <div class="step-text" data-slot="step_2">Second action item — concrete, owner attached.</div>
+    </div>
+    <div class="step-divider" style="top: 186px;"></div>
+    <div class="step" style="top: 196px;">
+      <div class="step-num">03</div>
+      <div class="step-text" data-slot="step_3">Third action item — concrete, owner attached.</div>
+    </div>
+    <div class="step-divider" style="top: 272px;"></div>
+    <div class="step" style="top: 282px;">
+      <div class="step-num">04</div>
+      <div class="step-text" data-slot="step_4">Fourth action item — concrete, owner attached.</div>
+    </div>
+  </div>
+
+  <div class="owner" data-slot="owner_label">OWNER: DATA TEAM</div>
+</body>
+</html>
