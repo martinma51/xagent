@@ -127,6 +127,131 @@ def get_slide_template(template_id: str) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# layouts — each template page exposed as a globally-addressable layout
+# ---------------------------------------------------------------------------
+
+
+LAYOUT_ID_SEP = ":"
+
+
+def _build_layout_id(template_id: str, page_idx: int) -> str:
+    return f"{template_id}{LAYOUT_ID_SEP}{page_idx}"
+
+
+def _split_layout_id(layout_id: str) -> Optional[tuple[str, int]]:
+    """Parse ``<template_id>:<page_idx>`` → ``(template_id, page_idx)``.
+
+    Returns ``None`` if the format is invalid.  Template ids never contain
+    a colon, so a simple ``rsplit`` is unambiguous.
+    """
+    if not isinstance(layout_id, str) or LAYOUT_ID_SEP not in layout_id:
+        return None
+    template_id, _, idx_str = layout_id.rpartition(LAYOUT_ID_SEP)
+    if not template_id or not idx_str:
+        return None
+    try:
+        return template_id, int(idx_str)
+    except ValueError:
+        return None
+
+
+def list_slide_layouts() -> Dict[str, Any]:
+    """Return every layout (page) across every template as a flat list.
+
+    Used by the deck editor's page picker: the user can compose a deck out of
+    any layout from any template, not just the one they started from.
+
+    Returns:
+        ``{"success": True, "layouts": [...]}`` where each entry contains
+        ``id``, ``template_id``, ``template_name``, ``template_category``,
+        ``page_idx``, ``layout`` (the layout name from meta), ``thumbnail_name``
+        (the filename inside the template's thumbnails dir), and ``slots``
+        (slot schema).  Callers that need to serve a thumbnail URL should
+        prefix with ``/api/slide-templates/<template_id>/thumbnails/<idx>.png``.
+    """
+    layouts: List[Dict[str, Any]] = []
+    for tdir in _iter_template_dirs():
+        try:
+            meta = _load_template_meta(tdir)
+        except Exception as exc:
+            logger.warning(
+                "slides_tool: skipping unreadable template %s: %s", tdir, exc
+            )
+            continue
+        template_id = meta.get("id", tdir.name)
+        for page in meta.get("pages", []):
+            idx = page.get("idx")
+            if not isinstance(idx, int):
+                continue
+            layouts.append(
+                {
+                    "id": _build_layout_id(template_id, idx),
+                    "template_id": template_id,
+                    "template_name": meta.get("name", template_id),
+                    "template_category": meta.get("category", ""),
+                    "page_idx": idx,
+                    "layout": page.get("layout", ""),
+                    "file": page.get("file", ""),
+                    "slots": page.get("slots", {}),
+                }
+            )
+    return {"success": True, "layouts": layouts}
+
+
+def resolve_layout(layout_id: str) -> Dict[str, Any]:
+    """Look up the template + page meta + html path for a layout id.
+
+    Returns ``{"success": True, "template_id", "page_idx", "page_meta",
+    "template_dir", "html_path"}`` on success.  On bad id or missing page,
+    returns ``{"success": False, "error"}``.
+    """
+    parsed = _split_layout_id(layout_id)
+    if parsed is None:
+        return {"success": False, "error": f"invalid layout_id: {layout_id!r}"}
+    template_id, page_idx = parsed
+    found = get_slide_template(template_id)
+    if not found["success"]:
+        return found
+    meta = found["template"]
+    for page in meta.get("pages", []):
+        if page.get("idx") == page_idx:
+            template_dir = Path(meta["_dir"])
+            return {
+                "success": True,
+                "template_id": template_id,
+                "page_idx": page_idx,
+                "page_meta": page,
+                "template_dir": template_dir,
+                "html_path": template_dir / page["file"],
+            }
+    return {
+        "success": False,
+        "error": f"layout '{layout_id}' has no page idx {page_idx} in template {template_id}",
+    }
+
+
+def render_layout_html(
+    layout_id: str, slot_values: Dict[str, str]
+) -> Dict[str, Any]:
+    """Return one layout's HTML with its slots filled in.
+
+    Same behaviour as :func:`render_page_html` but addressed by a layout id
+    instead of a (template_id, page_idx) pair.  Used by the deck editor for
+    live previews of arbitrary layouts.
+    """
+    found = resolve_layout(layout_id)
+    if not found["success"]:
+        return found
+    html_path: Path = found["html_path"]
+    if not html_path.exists():
+        return {"success": False, "error": f"layout missing file: {html_path}"}
+    return {
+        "success": True,
+        "html": _fill_html_slots(html_path.read_text(encoding="utf-8"), slot_values),
+    }
+
+
+# ---------------------------------------------------------------------------
 # slot filling
 # ---------------------------------------------------------------------------
 
@@ -264,6 +389,163 @@ def render_deck(
         "output_dir": str(out_dir),
         "html_paths": html_paths,
     }
+
+
+# ---------------------------------------------------------------------------
+# variable-length deck rendering (Phase A: deck.pages with layout refs)
+# ---------------------------------------------------------------------------
+
+
+def _validate_deck_pages(
+    pages: Sequence[Dict[str, Any]],
+) -> List[str]:
+    """Validate a deck.pages list against the layouts it references.
+
+    Returns a list of human-readable errors; empty list means valid.
+    """
+    errors: List[str] = []
+    if not pages:
+        errors.append("deck has no pages")
+        return errors
+    for i, entry in enumerate(pages):
+        if not isinstance(entry, dict):
+            errors.append(f"page {i}: not an object")
+            continue
+        layout_id = entry.get("layout_id")
+        if not isinstance(layout_id, str) or not layout_id:
+            errors.append(f"page {i}: missing layout_id")
+            continue
+        resolved = resolve_layout(layout_id)
+        if not resolved.get("success"):
+            errors.append(f"page {i}: {resolved.get('error', 'unresolved layout')}")
+            continue
+        slot_schema = (resolved["page_meta"].get("slots") or {})
+        provided = entry.get("slot_values") or {}
+        for slot_name, spec in slot_schema.items():
+            if bool(spec.get("required")) and not str(provided.get(slot_name, "")).strip():
+                errors.append(
+                    f"page {i} ({layout_id}): missing required slot '{slot_name}'"
+                )
+    return errors
+
+
+def render_deck_pages(
+    pages: Sequence[Dict[str, Any]],
+    output_dir: str,
+    workspace: Optional[TaskWorkspace] = None,
+) -> Dict[str, Any]:
+    """Materialise a variable-length deck (Phase A shape) to disk.
+
+    Args:
+        pages: Ordered list of ``{"layout_id": "...", "slot_values": {...}}``
+            entries.  Each layout id is resolved via :func:`resolve_layout`.
+        output_dir: Where to write the per-page HTML files.  Names are
+            ``page_<NN>__<original_filename>`` so order is preserved on disk
+            and the originating layout is still identifiable.
+        workspace: Optional task workspace for relative path resolution.
+
+    Returns:
+        On success ``{"success": True, "output_dir", "html_paths": [...]}``.
+        On error ``{"success": False, "error", "errors": [...]}``.
+    """
+    errors = _validate_deck_pages(pages)
+    if errors:
+        return {"success": False, "error": "invalid deck pages", "errors": errors}
+
+    out_dir = Path(output_dir)
+    if workspace is not None and not out_dir.is_absolute():
+        out_dir = workspace.root / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    html_paths: List[str] = []
+    for i, entry in enumerate(pages):
+        resolved = resolve_layout(entry["layout_id"])
+        # _validate_deck_pages above guarantees success, but be defensive.
+        if not resolved.get("success"):
+            return {"success": False, "error": resolved.get("error", "resolve failed")}
+        src: Path = resolved["html_path"]
+        if not src.exists():
+            return {"success": False, "error": f"layout missing file: {src}"}
+        slot_values = entry.get("slot_values") or {}
+        filled = _fill_html_slots(src.read_text(encoding="utf-8"), slot_values)
+        # Prefix with running index so the converter consumes them in order.
+        dst = out_dir / f"page_{i:02d}__{src.name}"
+        dst.write_text(filled, encoding="utf-8")
+        html_paths.append(str(dst))
+
+    return {
+        "success": True,
+        "output_dir": str(out_dir),
+        "html_paths": html_paths,
+    }
+
+
+async def export_deck_pages_to_pptx(
+    pages: Sequence[Dict[str, Any]],
+    output_pptx_path: str,
+    workspace: Optional[TaskWorkspace] = None,
+    keep_html: bool = False,
+) -> Dict[str, Any]:
+    """Render a deck.pages list to HTML, then convert to a single .pptx.
+
+    Companion to the legacy :func:`create_deck_from_template` but driven by
+    a Phase A pages array instead of a single template_id.
+    """
+    if workspace is not None:
+        html_out_dir = "decks/deck_html"
+    else:
+        html_out_dir = str(Path(output_pptx_path).with_suffix("")) + "_html"
+
+    render_result = render_deck_pages(pages, html_out_dir, workspace=workspace)
+    if not render_result.get("success"):
+        return render_result
+
+    export_result = await convert_html_to_pptx(
+        render_result["html_paths"], output_pptx_path, workspace=workspace
+    )
+    render_result["pptx"] = export_result
+
+    if not keep_html:
+        for p in render_result["html_paths"]:
+            try:
+                Path(p).unlink(missing_ok=True)
+            except OSError as exc:  # pragma: no cover
+                logger.warning("slides_tool: failed to delete intermediate html %s: %s", p, exc)
+        try:
+            Path(render_result["output_dir"]).rmdir()
+        except OSError:
+            pass
+
+    return render_result
+
+
+def template_to_initial_pages(template_id: str) -> Dict[str, Any]:
+    """Bootstrap a deck.pages list from every page of one template.
+
+    Used by ``POST /api/decks`` when the caller passes only a ``template_id``:
+    the deck is created with that template's full page sequence as initial
+    entries (empty slot_values), which the user can then edit, rearrange, or
+    extend with layouts from other templates.
+
+    Returns ``{"success": True, "pages": [...]}`` or
+    ``{"success": False, "error": "..."}``.
+    """
+    found = get_slide_template(template_id)
+    if not found["success"]:
+        return found
+    meta = found["template"]
+    pages: List[Dict[str, Any]] = []
+    for page in meta.get("pages", []):
+        idx = page.get("idx")
+        if not isinstance(idx, int):
+            continue
+        pages.append(
+            {
+                "layout_id": _build_layout_id(template_id, idx),
+                "slot_values": {},
+            }
+        )
+    return {"success": True, "pages": pages}
 
 
 # ---------------------------------------------------------------------------

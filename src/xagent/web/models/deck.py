@@ -1,8 +1,9 @@
 """Slide-deck persistence model.
 
-One row per saved deck.  The full slot-value payload lives in a JSON column
-so the schema stays in lock-step with whatever shape the LLM auto-fill
-produces — no migration needed when a template adds or renames slots.
+One row per saved deck.  A deck is an ordered list of pages; each page picks a
+layout from any template and carries its own slot values.  ``template_id``
+remains as a soft origin tag (the template the deck was started from) but the
+pages themselves can mix layouts across templates.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from .database import Base
 
 
 class SlideDeck(Base):  # type: ignore[misc]
-    """A user-owned, template-derived slide deck."""
+    """A user-owned slide deck, materialised as a list of layout-referenced pages."""
 
     __tablename__ = "slide_decks"
 
@@ -25,14 +26,17 @@ class SlideDeck(Base):  # type: ignore[misc]
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Soft origin tag — which template the deck was created from.  Pages may
+    # later be added from other templates, so this is no longer authoritative
+    # for the deck's content; treat it as metadata for "Based on …" labels.
     template_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     topic: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
 
-    # Per-page slot values, shape: {"<page_idx>": {"<slot>": "<text>", ...}, ...}
-    # JSON keeps us schema-flexible across template changes.
-    slot_values: Mapped[dict[str, Any]] = mapped_column(
-        JSON, nullable=False, default=dict
+    # Ordered list of pages.  Shape:
+    #   [{"layout_id": "<template_id>:<page_idx>", "slot_values": {<name>: <text>}}, ...]
+    pages: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False, default=list
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -48,5 +52,5 @@ class SlideDeck(Base):  # type: ignore[misc]
     def __repr__(self) -> str:
         return (
             f"<SlideDeck id={self.id} user={self.user_id} "
-            f"template='{self.template_id}' title='{self.title[:30]}'>"
+            f"template='{self.template_id}' pages={len(self.pages or [])}>"
         )

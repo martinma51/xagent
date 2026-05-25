@@ -35,6 +35,7 @@ from .api.model import model_router
 from .api.monitor import monitor_router
 from .api.progress_ws import progress_ws_router
 from .api.skills import router as skills_router
+from .api.slide_layouts import router as slide_layouts_router
 from .api.slide_templates import router as slide_templates_router
 from .api.system import system_router
 from .api.templates import router as templates_router
@@ -456,6 +457,7 @@ app.include_router(skills_router)
 app.include_router(system_router)
 app.include_router(templates_router)
 app.include_router(slide_templates_router)
+app.include_router(slide_layouts_router)
 app.include_router(decks_router)
 app.include_router(agents_router)
 app.include_router(workforces_router)
