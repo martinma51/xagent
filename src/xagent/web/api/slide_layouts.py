@@ -49,7 +49,7 @@ def _thumbnail_url(template_id: str, page_idx: int) -> str:
 
 @router.get("/", response_model=List[SlideLayoutInfo])
 async def list_layouts(
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     template_id: Optional[str] = Query(
         None, description="Optionally filter to layouts from one template."
     ),
@@ -58,7 +58,7 @@ async def list_layouts(
     ),
 ) -> List[SlideLayoutInfo]:
     """Return every layout across every template as a flat list."""
-    result = list_slide_layouts()
+    result = list_slide_layouts(user_id=int(current_user.id))
     layouts: List[Dict[str, Any]] = result["layouts"]
     if template_id:
         layouts = [l for l in layouts if l["template_id"] == template_id]

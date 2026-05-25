@@ -139,11 +139,11 @@ def _attach_thumbnail_urls(template_id: str, info: Dict[str, Any]) -> Dict[str, 
 
 @router.get("/", response_model=List[SlideTemplateInfo])
 async def list_templates(
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     category: Optional[str] = Query(None, description="Filter by category."),
 ) -> List[SlideTemplateInfo]:
     """List every available deck template (optionally filtered by category)."""
-    result = list_slide_templates(category=category)
+    result = list_slide_templates(category=category, user_id=int(current_user.id))
     return [
         SlideTemplateInfo(**_attach_thumbnail_urls(t["id"], t))
         for t in result["templates"]
@@ -153,10 +153,10 @@ async def list_templates(
 @router.get("/{template_id}", response_model=SlideTemplateDetail)
 async def get_template(
     template_id: str,
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> SlideTemplateDetail:
     """Return one template's full schema (page list + slot definitions)."""
-    found = get_slide_template(template_id)
+    found = get_slide_template(template_id, user_id=int(current_user.id))
     if not found["success"]:
         raise HTTPException(status_code=404, detail=found.get("error", "not found"))
     meta = found["template"]
@@ -190,9 +190,28 @@ async def get_thumbnail(
     ``filename`` may be either ``<idx>.png`` (positional) or the literal
     template-side filename like ``page_0_cover.png``.
     """
+    # Search built-ins first, then every user's upload dir.  Template ids in
+    # user uploads include a random suffix so cross-user collisions are
+    # vanishingly rare; this keeps the route public so <img> tags can fetch
+    # without bearer-token plumbing.
     found = get_slide_template(template_id)
     if not found["success"]:
-        raise HTTPException(status_code=404, detail=found.get("error", "not found"))
+        from ...core.tools.core.slides_tool import get_user_templates_root
+
+        root = get_user_templates_root()
+        if root.exists():
+            for user_dir in root.iterdir():
+                if not user_dir.is_dir():
+                    continue
+                candidate_dir = user_dir / template_id
+                if (candidate_dir / "meta.json").exists():
+                    found = {
+                        "success": True,
+                        "template": {"_dir": str(candidate_dir)},
+                    }
+                    break
+        if not found["success"]:
+            raise HTTPException(status_code=404, detail="template not found")
 
     template_dir = Path(found["template"]["_dir"])
     thumbs_dir = template_dir / "thumbnails"

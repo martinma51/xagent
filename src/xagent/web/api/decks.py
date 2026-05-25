@@ -135,10 +135,10 @@ def _normalise_pages(raw: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def _validate_layout_refs(pages: List[DeckPageEntry]) -> None:
+def _validate_layout_refs(pages: List[DeckPageEntry], user_id: int) -> None:
     """Raise 400 if any layout_id in the deck doesn't resolve."""
     for i, p in enumerate(pages):
-        resolved = resolve_layout(p.layout_id)
+        resolved = resolve_layout(p.layout_id, user_id=user_id)
         if not resolved.get("success"):
             raise HTTPException(
                 status_code=400,
@@ -233,13 +233,15 @@ async def create_deck(
     pages_list: List[Dict[str, Any]]
 
     if body.pages is not None:
-        _validate_layout_refs(body.pages)
+        _validate_layout_refs(body.pages, user_id=int(current_user.id))
         pages_list = [
             {"layout_id": p.layout_id, "slot_values": dict(p.slot_values)}
             for p in body.pages
         ]
     elif template_id:
-        bootstrap = template_to_initial_pages(template_id)
+        bootstrap = template_to_initial_pages(
+            template_id, user_id=int(current_user.id)
+        )
         if not bootstrap.get("success"):
             raise HTTPException(status_code=400, detail=bootstrap.get("error", "bad template"))
         pages_list = bootstrap["pages"]
@@ -284,7 +286,7 @@ async def update_deck(
     if body.topic is not None:
         deck.topic = body.topic
     if body.pages is not None:
-        _validate_layout_refs(body.pages)
+        _validate_layout_refs(body.pages, user_id=int(current_user.id))
         deck.pages = [
             {"layout_id": p.layout_id, "slot_values": dict(p.slot_values)}
             for p in body.pages
@@ -326,7 +328,9 @@ async def preview_deck_page(
     deck = _get_owned_deck(deck_id, db, current_user)
     entry = _resolve_page_or_404(deck, page_idx)
     slot_values = body.slot_values if body.slot_values else entry["slot_values"]
-    result = render_layout_html(entry["layout_id"], slot_values)
+    result = render_layout_html(
+        entry["layout_id"], slot_values, user_id=int(current_user.id)
+    )
     if not result.get("success"):
         raise HTTPException(status_code=400, detail=result.get("error", "render failed"))
     return HTMLResponse(content=result["html"])
@@ -350,7 +354,9 @@ async def render_deck(
     safe_name = safe_name.replace("/", "_") or f"deck_{deck.id}"
     out_path = tmpdir / f"{safe_name}.pptx"
 
-    result = await export_deck_pages_to_pptx(pages, str(out_path), keep_html=False)
+    result = await export_deck_pages_to_pptx(
+        pages, str(out_path), keep_html=False, user_id=int(current_user.id)
+    )
     if not result.get("success"):
         raise HTTPException(
             status_code=400,

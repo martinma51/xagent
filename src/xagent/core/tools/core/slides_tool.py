@@ -24,7 +24,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from bs4 import BeautifulSoup
 
-from ....config import get_slide_template_dirs
+from ....config import get_slide_template_dirs, get_storage_root
 from ...file_ref import build_workspace_file_ref
 from ...workspace import TaskWorkspace
 from ..artifacts import build_inline_artifact
@@ -41,15 +41,19 @@ THUMBNAIL_DIR = "thumbnails"
 # ---------------------------------------------------------------------------
 
 
-def _iter_template_dirs() -> List[Path]:
-    """Return every concrete template directory across all configured roots.
+def _iter_template_dirs(user_id: Optional[int] = None) -> List[Path]:
+    """Return every concrete template directory the caller can see.
 
-    A "template directory" is any subdirectory of a configured root that
-    contains a ``meta.json`` file.  Later roots win when ids collide, matching
-    the documented load order for skill libraries.
+    Always includes built-in roots from :func:`get_slide_template_dirs`.  When
+    ``user_id`` is given, that user's private upload dir is also scanned (and
+    its templates take precedence on id collisions, matching the documented
+    load order for skill libraries).
     """
     seen: Dict[str, Path] = {}
-    for root in get_slide_template_dirs():
+    roots = list(get_slide_template_dirs())
+    if user_id is not None:
+        roots.append(get_user_templates_dir(int(user_id)))
+    for root in roots:
         if not root.exists():
             continue
         for child in sorted(root.iterdir()):
@@ -73,12 +77,16 @@ def _load_template_meta(template_dir: Path) -> Dict[str, Any]:
     return meta
 
 
-def list_slide_templates(category: Optional[str] = None) -> Dict[str, Any]:
+def list_slide_templates(
+    category: Optional[str] = None, user_id: Optional[int] = None
+) -> Dict[str, Any]:
     """Return summaries of every available slide-deck template.
 
     Args:
         category: Optional case-insensitive filter on the template's
             ``category`` field.
+        user_id: When set, the caller's uploaded templates are merged in
+            alongside the built-ins.
 
     Returns:
         ``{"success": True, "templates": [...]}`` where each template entry
@@ -87,7 +95,7 @@ def list_slide_templates(category: Optional[str] = None) -> Dict[str, Any]:
         omitted from the summary; fetch them with :func:`get_slide_template`.
     """
     summaries: List[Dict[str, Any]] = []
-    for tdir in _iter_template_dirs():
+    for tdir in _iter_template_dirs(user_id=user_id):
         try:
             meta = _load_template_meta(tdir)
         except Exception as exc:
@@ -108,18 +116,21 @@ def list_slide_templates(category: Optional[str] = None) -> Dict[str, Any]:
     return {"success": True, "templates": summaries}
 
 
-def get_slide_template(template_id: str) -> Dict[str, Any]:
+def get_slide_template(
+    template_id: str, user_id: Optional[int] = None
+) -> Dict[str, Any]:
     """Return the full ``meta.json`` (including slot schemas) for one template.
 
     Args:
         template_id: The ``id`` declared in the template's ``meta.json``
             (typically also the directory name).
+        user_id: When set, the user's uploaded templates are searched too.
 
     Returns:
         ``{"success": True, "template": {...}}`` on success, or
         ``{"success": False, "error": "..."}`` when the id is unknown.
     """
-    for tdir in _iter_template_dirs():
+    for tdir in _iter_template_dirs(user_id=user_id):
         if tdir.name == template_id:
             meta = _load_template_meta(tdir)
             return {"success": True, "template": meta}
@@ -155,7 +166,7 @@ def _split_layout_id(layout_id: str) -> Optional[tuple[str, int]]:
         return None
 
 
-def list_slide_layouts() -> Dict[str, Any]:
+def list_slide_layouts(user_id: Optional[int] = None) -> Dict[str, Any]:
     """Return every layout (page) across every template as a flat list.
 
     Used by the deck editor's page picker: the user can compose a deck out of
@@ -170,7 +181,7 @@ def list_slide_layouts() -> Dict[str, Any]:
         prefix with ``/api/slide-templates/<template_id>/thumbnails/<idx>.png``.
     """
     layouts: List[Dict[str, Any]] = []
-    for tdir in _iter_template_dirs():
+    for tdir in _iter_template_dirs(user_id=user_id):
         try:
             meta = _load_template_meta(tdir)
         except Exception as exc:
@@ -198,7 +209,127 @@ def list_slide_layouts() -> Dict[str, Any]:
     return {"success": True, "layouts": layouts}
 
 
-def resolve_layout(layout_id: str) -> Dict[str, Any]:
+# ---------------------------------------------------------------------------
+# user-uploaded templates (Phase B)
+# ---------------------------------------------------------------------------
+
+
+USER_TEMPLATES_DIR_NAME = "user_slide_templates"
+
+
+def get_user_templates_root() -> Path:
+    """Return the root directory under which all users' uploaded templates live."""
+    return get_storage_root() / USER_TEMPLATES_DIR_NAME
+
+
+def get_user_templates_dir(user_id: int) -> Path:
+    """Return one user's private template directory.
+
+    Each user has an isolated subdirectory.  The directory is created if it
+    doesn't already exist so callers can always write into it.
+    """
+    path = get_user_templates_root() / str(user_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _iter_user_template_dirs(user_id: int) -> List[Path]:
+    """Return every template directory the user has uploaded."""
+    root = get_user_templates_dir(user_id)
+    if not root.exists():
+        return []
+    out: List[Path] = []
+    for child in sorted(root.iterdir()):
+        if not child.is_dir():
+            continue
+        if not (child / META_FILE).exists():
+            continue
+        out.append(child)
+    return out
+
+
+def list_user_slide_templates(user_id: int) -> Dict[str, Any]:
+    """Return summaries of every template uploaded by one user."""
+    summaries: List[Dict[str, Any]] = []
+    for tdir in _iter_user_template_dirs(user_id):
+        try:
+            meta = _load_template_meta(tdir)
+        except Exception as exc:
+            logger.warning(
+                "slides_tool: skipping unreadable user template %s: %s", tdir, exc
+            )
+            continue
+        summaries.append(
+            {
+                "id": meta.get("id", tdir.name),
+                "name": meta.get("name", tdir.name),
+                "description": meta.get("description", ""),
+                "category": meta.get("category", "User"),
+                "page_count": meta.get("page_count", len(meta.get("pages", []))),
+                "thumbnails": meta.get("thumbnails", []),
+                "source": meta.get("source", "user_uploaded_pptx"),
+            }
+        )
+    return {"success": True, "templates": summaries}
+
+
+def get_user_slide_template(user_id: int, template_id: str) -> Dict[str, Any]:
+    """Return the full meta.json for one user-uploaded template."""
+    for tdir in _iter_user_template_dirs(user_id):
+        if tdir.name == template_id:
+            meta = _load_template_meta(tdir)
+            return {"success": True, "template": meta}
+    return {
+        "success": False,
+        "error": f"unknown user template id: {template_id}",
+    }
+
+
+def list_user_slide_layouts(user_id: int) -> Dict[str, Any]:
+    """Flatten one user's templates into the same layout shape as the built-ins."""
+    layouts: List[Dict[str, Any]] = []
+    for tdir in _iter_user_template_dirs(user_id):
+        try:
+            meta = _load_template_meta(tdir)
+        except Exception as exc:
+            logger.warning(
+                "slides_tool: skipping unreadable user template %s: %s", tdir, exc
+            )
+            continue
+        template_id = meta.get("id", tdir.name)
+        for page in meta.get("pages", []):
+            idx = page.get("idx")
+            if not isinstance(idx, int):
+                continue
+            layouts.append(
+                {
+                    "id": _build_layout_id(template_id, idx),
+                    "template_id": template_id,
+                    "template_name": meta.get("name", template_id),
+                    "template_category": meta.get("category", "User"),
+                    "page_idx": idx,
+                    "layout": page.get("layout", ""),
+                    "file": page.get("file", ""),
+                    "slots": page.get("slots", {}),
+                }
+            )
+    return {"success": True, "layouts": layouts}
+
+
+def delete_user_slide_template(user_id: int, template_id: str) -> Dict[str, Any]:
+    """Remove a user's template directory entirely (idempotent)."""
+    import shutil
+
+    for tdir in _iter_user_template_dirs(user_id):
+        if tdir.name == template_id:
+            shutil.rmtree(tdir, ignore_errors=True)
+            return {"success": True, "template_id": template_id}
+    return {"success": False, "error": "template not found"}
+
+
+def resolve_layout(
+    layout_id: str, user_id: Optional[int] = None
+) -> Dict[str, Any]:
     """Look up the template + page meta + html path for a layout id.
 
     Returns ``{"success": True, "template_id", "page_idx", "page_meta",
@@ -209,7 +340,7 @@ def resolve_layout(layout_id: str) -> Dict[str, Any]:
     if parsed is None:
         return {"success": False, "error": f"invalid layout_id: {layout_id!r}"}
     template_id, page_idx = parsed
-    found = get_slide_template(template_id)
+    found = get_slide_template(template_id, user_id=user_id)
     if not found["success"]:
         return found
     meta = found["template"]
@@ -231,7 +362,9 @@ def resolve_layout(layout_id: str) -> Dict[str, Any]:
 
 
 def render_layout_html(
-    layout_id: str, slot_values: Dict[str, str]
+    layout_id: str,
+    slot_values: Dict[str, str],
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Return one layout's HTML with its slots filled in.
 
@@ -239,7 +372,7 @@ def render_layout_html(
     instead of a (template_id, page_idx) pair.  Used by the deck editor for
     live previews of arbitrary layouts.
     """
-    found = resolve_layout(layout_id)
+    found = resolve_layout(layout_id, user_id=user_id)
     if not found["success"]:
         return found
     html_path: Path = found["html_path"]
@@ -398,6 +531,7 @@ def render_deck(
 
 def _validate_deck_pages(
     pages: Sequence[Dict[str, Any]],
+    user_id: Optional[int] = None,
 ) -> List[str]:
     """Validate a deck.pages list against the layouts it references.
 
@@ -415,7 +549,7 @@ def _validate_deck_pages(
         if not isinstance(layout_id, str) or not layout_id:
             errors.append(f"page {i}: missing layout_id")
             continue
-        resolved = resolve_layout(layout_id)
+        resolved = resolve_layout(layout_id, user_id=user_id)
         if not resolved.get("success"):
             errors.append(f"page {i}: {resolved.get('error', 'unresolved layout')}")
             continue
@@ -433,6 +567,7 @@ def render_deck_pages(
     pages: Sequence[Dict[str, Any]],
     output_dir: str,
     workspace: Optional[TaskWorkspace] = None,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Materialise a variable-length deck (Phase A shape) to disk.
 
@@ -443,12 +578,13 @@ def render_deck_pages(
             ``page_<NN>__<original_filename>`` so order is preserved on disk
             and the originating layout is still identifiable.
         workspace: Optional task workspace for relative path resolution.
+        user_id: When set, the user's uploaded templates are searched too.
 
     Returns:
         On success ``{"success": True, "output_dir", "html_paths": [...]}``.
         On error ``{"success": False, "error", "errors": [...]}``.
     """
-    errors = _validate_deck_pages(pages)
+    errors = _validate_deck_pages(pages, user_id=user_id)
     if errors:
         return {"success": False, "error": "invalid deck pages", "errors": errors}
 
@@ -459,7 +595,7 @@ def render_deck_pages(
 
     html_paths: List[str] = []
     for i, entry in enumerate(pages):
-        resolved = resolve_layout(entry["layout_id"])
+        resolved = resolve_layout(entry["layout_id"], user_id=user_id)
         # _validate_deck_pages above guarantees success, but be defensive.
         if not resolved.get("success"):
             return {"success": False, "error": resolved.get("error", "resolve failed")}
@@ -485,6 +621,7 @@ async def export_deck_pages_to_pptx(
     output_pptx_path: str,
     workspace: Optional[TaskWorkspace] = None,
     keep_html: bool = False,
+    user_id: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Render a deck.pages list to HTML, then convert to a single .pptx.
 
@@ -496,7 +633,9 @@ async def export_deck_pages_to_pptx(
     else:
         html_out_dir = str(Path(output_pptx_path).with_suffix("")) + "_html"
 
-    render_result = render_deck_pages(pages, html_out_dir, workspace=workspace)
+    render_result = render_deck_pages(
+        pages, html_out_dir, workspace=workspace, user_id=user_id
+    )
     if not render_result.get("success"):
         return render_result
 
@@ -519,7 +658,9 @@ async def export_deck_pages_to_pptx(
     return render_result
 
 
-def template_to_initial_pages(template_id: str) -> Dict[str, Any]:
+def template_to_initial_pages(
+    template_id: str, user_id: Optional[int] = None
+) -> Dict[str, Any]:
     """Bootstrap a deck.pages list from every page of one template.
 
     Used by ``POST /api/decks`` when the caller passes only a ``template_id``:
@@ -530,7 +671,7 @@ def template_to_initial_pages(template_id: str) -> Dict[str, Any]:
     Returns ``{"success": True, "pages": [...]}`` or
     ``{"success": False, "error": "..."}``.
     """
-    found = get_slide_template(template_id)
+    found = get_slide_template(template_id, user_id=user_id)
     if not found["success"]:
         return found
     meta = found["template"]
