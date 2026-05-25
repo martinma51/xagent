@@ -22,6 +22,7 @@ export interface SlideTemplateInfo {
   category: string;
   page_count: number;
   thumbnail_urls: string[];
+  is_user_uploaded?: boolean;
 }
 
 export interface SlideTemplateDetail extends SlideTemplateInfo {

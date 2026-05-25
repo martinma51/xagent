@@ -37,7 +37,8 @@ router = APIRouter(prefix="/api/user-slide-templates", tags=["user-slide-templat
 
 MAX_UPLOAD_BYTES = 30 * 1024 * 1024  # 30 MB
 MAX_TEMPLATES_PER_USER = 100
-SLUG_RE = re.compile(r"[^a-z0-9_]+")
+NON_WORD_RE = re.compile(r"[^\w]+", re.UNICODE)
+DASH_RUN_RE = re.compile(r"_+")
 
 CANVAS_W = 1280
 CANVAS_H = 720
@@ -60,9 +61,17 @@ class UserTemplateInfo(BaseModel):
 
 
 def _slugify(name: str) -> str:
-    s = name.lower().strip().replace(" ", "_")
-    s = SLUG_RE.sub("_", s)
-    return s.strip("_") or "template"
+    """Slugify a template name while preserving non-ASCII word chars (e.g. CJK).
+
+    Python's ``\\w`` under the default ``re.UNICODE`` flag matches letters,
+    digits, and underscore across every script — so Chinese, Japanese, Korean,
+    Arabic, etc. all survive into the resulting id and remain human-readable.
+    """
+    s = name.strip().replace(" ", "_")
+    s = NON_WORD_RE.sub("_", s)
+    s = DASH_RUN_RE.sub("_", s).strip("_")
+    # ``str.lower`` is a no-op on CJK; ASCII portions get normalised.
+    return s.lower() or "template"
 
 
 def _build_template_id(user_id: int, name: str) -> str:

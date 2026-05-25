@@ -25,6 +25,7 @@ from ...core.tools.core.slides_tool import (
     create_deck_from_template,
     get_slide_template,
     list_slide_templates,
+    list_user_slide_templates,
     render_page_html,
 )
 from ..auth_dependencies import get_current_user
@@ -49,6 +50,10 @@ class SlideTemplateInfo(BaseModel):
     thumbnail_urls: List[str] = Field(
         default_factory=list,
         description="API URLs that serve the per-page preview PNGs in order.",
+    )
+    is_user_uploaded: bool = Field(
+        default=False,
+        description="True when the template was uploaded by the current user.",
     )
 
 
@@ -144,8 +149,15 @@ async def list_templates(
 ) -> List[SlideTemplateInfo]:
     """List every available deck template (optionally filtered by category)."""
     result = list_slide_templates(category=category, user_id=int(current_user.id))
+    user_ids = {
+        t["id"]
+        for t in list_user_slide_templates(int(current_user.id))["templates"]
+    }
     return [
-        SlideTemplateInfo(**_attach_thumbnail_urls(t["id"], t))
+        SlideTemplateInfo(
+            **_attach_thumbnail_urls(t["id"], t),
+            is_user_uploaded=t["id"] in user_ids,
+        )
         for t in result["templates"]
     ]
 

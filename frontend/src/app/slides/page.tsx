@@ -9,6 +9,7 @@ import {
   Loader2,
   Upload,
   X,
+  Trash2,
 } from "lucide-react";
 
 import { apiRequest } from "@/lib/api-wrapper";
@@ -39,6 +40,8 @@ export default function SlidesGalleryPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Refetch the gallery; used after a successful upload so the new template
   // appears immediately.
@@ -52,6 +55,39 @@ export default function SlidesGalleryPage() {
       /* swallow */
     }
   }, [apiBase]);
+
+  const handleDeleteTemplate = useCallback(
+    async (template: SlideTemplateInfo) => {
+      const ok = window.confirm(
+        `Delete "${template.name}"? This removes your uploaded template and all its pages. Existing decks that reference it will break.`
+      );
+      if (!ok) return;
+      setDeletingId(template.id);
+      setDeleteError(null);
+      try {
+        const res = await apiRequest(
+          `${apiBase}/api/user-slide-templates/${encodeURIComponent(template.id)}`,
+          { method: "DELETE" }
+        );
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            detail = typeof body.detail === "string" ? body.detail : detail;
+          } catch {
+            /* not json */
+          }
+          throw new Error(detail);
+        }
+        await refetchTemplates();
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [apiBase, refetchTemplates]
+  );
 
   const handleUploadFile = useCallback(
     async (file: File) => {
@@ -260,6 +296,11 @@ export default function SlidesGalleryPage() {
             Could not create deck: {createError}
           </div>
         )}
+        {deleteError && (
+          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            Could not delete template: {deleteError}
+          </div>
+        )}
         {loading ? (
           <div className="flex h-64 items-center justify-center text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -281,7 +322,13 @@ export default function SlidesGalleryPage() {
                 template={t}
                 apiBase={apiBase}
                 busy={creatingFromTemplate === t.id}
+                deleting={deletingId === t.id}
                 onUse={() => void handleUseTemplate(t)}
+                onDelete={
+                  t.is_user_uploaded
+                    ? () => void handleDeleteTemplate(t)
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -295,27 +342,57 @@ function SlideTemplateCard({
   template,
   apiBase,
   busy,
+  deleting,
   onUse,
+  onDelete,
 }: {
   template: SlideTemplateInfo;
   apiBase: string;
   busy: boolean;
+  deleting: boolean;
   onUse: () => void;
+  onDelete?: () => void;
 }) {
   const coverUrl = template.thumbnail_urls[0]
     ? `${apiBase}${template.thumbnail_urls[0]}`
     : undefined;
 
   return (
-    <button
-      onClick={onUse}
-      disabled={busy}
+    <div
       className={cn(
-        "group flex flex-col overflow-hidden rounded-xl border border-border bg-card text-left",
+        "group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card text-left",
         "transition hover:border-primary/40 hover:shadow-md",
-        busy && "opacity-60"
+        (busy || deleting) && "opacity-60"
       )}
     >
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          disabled={deleting}
+          className={cn(
+            "absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md",
+            "bg-background/85 text-muted-foreground backdrop-blur opacity-0",
+            "transition hover:bg-destructive hover:text-destructive-foreground group-hover:opacity-100"
+          )}
+          aria-label={`Delete ${template.name}`}
+          title="Delete this uploaded template"
+        >
+          {deleting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" />
+          )}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onUse}
+        disabled={busy || deleting}
+        className="flex flex-1 flex-col text-left disabled:cursor-not-allowed"
+      >
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
         {coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -362,7 +439,8 @@ function SlideTemplateCard({
           )}
         </div>
       </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
