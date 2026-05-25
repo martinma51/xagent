@@ -33,6 +33,7 @@ UPLOADS_DIR = "XAGENT_UPLOADS_DIR"
 WEB_DIR = "XAGENT_WEB_DIR"
 EXTERNAL_UPLOAD_DIRS = "XAGENT_EXTERNAL_UPLOAD_DIRS"
 EXTERNAL_SKILLS_LIBRARY_DIRS = "XAGENT_EXTERNAL_SKILLS_LIBRARY_DIRS"
+EXTERNAL_SLIDE_TEMPLATE_DIRS = "XAGENT_EXTERNAL_SLIDE_TEMPLATE_DIRS"
 AGENT_RUNTIME = "XAGENT_AGENT_RUNTIME"
 TASK_LEASE_TTL_SECONDS = "XAGENT_TASK_LEASE_TTL_SECONDS"
 TASK_LEASE_HEARTBEAT_SECONDS = "XAGENT_TASK_LEASE_HEARTBEAT_SECONDS"
@@ -496,6 +497,50 @@ def get_external_skills_dirs() -> list[Path]:
         result.append(path)
 
     return result
+
+
+def get_builtin_slide_template_dir() -> Path:
+    """Return the directory where the bundled slide-deck templates live.
+
+    The deck templates are shipped inside the package next to the slides tool
+    so they're always available without configuration.
+
+    Returns:
+        Path to ``src/xagent/core/tools/core/slide_templates``.
+    """
+    return Path(__file__).parent / "core" / "tools" / "core" / "slide_templates"
+
+
+def get_slide_template_dirs() -> list[Path]:
+    """Get all slide-deck template directories (built-in plus external).
+
+    The XAGENT_EXTERNAL_SLIDE_TEMPLATE_DIRS environment variable may contain a
+    comma-separated list of additional directories.  Each must be a directory
+    whose direct subdirectories are individual deck templates (each containing
+    a ``meta.json`` and one HTML file per slide).
+
+    Returns:
+        Ordered list of directories.  The built-in directory is always first;
+        external entries follow in declaration order so user overrides come
+        later and can win when iterated last.
+    """
+    dirs: list[Path] = [get_builtin_slide_template_dir()]
+
+    env_dirs = os.getenv(EXTERNAL_SLIDE_TEMPLATE_DIRS, "")
+    if not env_dirs:
+        return dirs
+
+    for dir_path in env_dirs.split(","):
+        dir_path = dir_path.strip()
+        if not dir_path:
+            continue
+        if "://" in dir_path:
+            logger.warning(f"Skipping non-local slide template path: {dir_path}")
+            continue
+        expanded_path = os.path.expanduser(os.path.expandvars(dir_path))
+        dirs.append(Path(expanded_path))
+
+    return dirs
 
 
 def get_storage_root() -> Path:

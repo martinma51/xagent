@@ -36,6 +36,7 @@ import {
   Bot,
   Box,
   LayoutTemplate,
+  Presentation,
   Info,
   Tag,
   Github,
@@ -179,6 +180,13 @@ export const getNavigationGroupsForUser = (user: any): NavigationGroup[] => [
         href: "/templates",
         icon: LayoutTemplate,
         color: "text-purple-400"
+      },
+      {
+        name: "Slides",
+        nameKey: "nav.slides",
+        href: "/slides",
+        icon: Presentation,
+        color: "text-pink-400"
       },
     ]
   },

@@ -1,0 +1,75 @@
+{
+  "id": "clean_light",
+  "name": "Clean Light",
+  "description": "Warm white canvas with a forest accent and serif headings — built for board updates, investor briefs, and formal business presentations.",
+  "category": "Business",
+  "version": "1.0.0",
+  "page_count": 5,
+  "canvas": { "width": 1280, "height": 720 },
+  "pages": [
+    {
+      "idx": 0,
+      "file": "page_0_cover.html",
+      "layout": "cover",
+      "slots": {
+        "eyebrow":  { "type": "text", "max_length": 40,  "required": false, "hint": "Small caps label above the title." },
+        "title":    { "type": "text", "max_length": 80,  "required": true,  "hint": "Main title in serif." },
+        "subtitle": { "type": "text", "max_length": 160, "required": false, "hint": "One-sentence framing." },
+        "author":   { "type": "text", "max_length": 60,  "required": false },
+        "date":     { "type": "text", "max_length": 24,  "required": false }
+      }
+    },
+    {
+      "idx": 1,
+      "file": "page_1_lead.html",
+      "layout": "lead_with_callout",
+      "slots": {
+        "heading":      { "type": "text", "max_length": 60,  "required": true },
+        "body":         { "type": "text", "max_length": 360, "required": true,  "hint": "Lead paragraph, 2-3 sentences." },
+        "callout_label":{ "type": "text", "max_length": 24,  "required": false, "hint": "Default 'KEY TAKEAWAY'." },
+        "callout_text": { "type": "text", "max_length": 180, "required": false, "hint": "One bold takeaway sentence." }
+      }
+    },
+    {
+      "idx": 2,
+      "file": "page_2_two_col.html",
+      "layout": "two_column_compare",
+      "slots": {
+        "heading":       { "type": "text", "max_length": 60,  "required": true },
+        "left_title":    { "type": "text", "max_length": 30,  "required": true },
+        "left_body":     { "type": "text", "max_length": 260, "required": true },
+        "right_title":   { "type": "text", "max_length": 30,  "required": true },
+        "right_body":    { "type": "text", "max_length": 260, "required": true }
+      }
+    },
+    {
+      "idx": 3,
+      "file": "page_3_stats.html",
+      "layout": "three_stats_row",
+      "slots": {
+        "heading":    { "type": "text", "max_length": 60,  "required": true },
+        "subheading": { "type": "text", "max_length": 140, "required": false },
+        "stat_1_value": { "type": "text", "max_length": 12, "required": true, "hint": "Big number, e.g. '94%'." },
+        "stat_1_label": { "type": "text", "max_length": 40, "required": true },
+        "stat_1_note":  { "type": "text", "max_length": 100, "required": false },
+        "stat_2_value": { "type": "text", "max_length": 12, "required": true },
+        "stat_2_label": { "type": "text", "max_length": 40, "required": true },
+        "stat_2_note":  { "type": "text", "max_length": 100, "required": false },
+        "stat_3_value": { "type": "text", "max_length": 12, "required": true },
+        "stat_3_label": { "type": "text", "max_length": 40, "required": true },
+        "stat_3_note":  { "type": "text", "max_length": 100, "required": false }
+      }
+    },
+    {
+      "idx": 4,
+      "file": "page_4_closing.html",
+      "layout": "closing",
+      "slots": {
+        "headline": { "type": "text", "max_length": 40,  "required": true,  "hint": "Big closing line in serif." },
+        "tagline":  { "type": "text", "max_length": 120, "required": false },
+        "contact_1":{ "type": "text", "max_length": 60,  "required": false },
+        "contact_2":{ "type": "text", "max_length": 60,  "required": false }
+      }
+    }
+  ]
+}

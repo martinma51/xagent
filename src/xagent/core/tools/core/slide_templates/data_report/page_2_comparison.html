@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" data-template="data_report" data-page="2">
+<head>
+<meta charset="utf-8"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; width: 1280px; height: 720px; background-color: rgb(245, 247, 250); color: rgb(15, 23, 42); font-family: 'Inter', system-ui, sans-serif; }
+  .accent-bar { position: absolute; left: 0; top: 0; width: 8px; height: 720px; background-color: rgb(37, 99, 235); }
+  .heading { position: absolute; left: 80px; top: 80px; width: 1120px; font-size: 36px; font-weight: 700; color: rgb(15, 23, 42); }
+
+  .table { position: absolute; left: 80px; top: 180px; width: 1120px; background-color: rgb(255, 255, 255); border: 1px solid rgb(226, 232, 240); border-radius: 12px; }
+  .header-row { position: absolute; left: 0; top: 0; width: 1120px; height: 56px; background-color: rgb(248, 250, 252); border-bottom: 1px solid rgb(226, 232, 240); border-top-left-radius: 12px; border-top-right-radius: 12px; }
+  .hdr-metric { position: absolute; left: 32px; top: 19px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: rgb(100, 116, 139); }
+  .hdr-a { position: absolute; left: 640px; top: 19px; width: 200px; text-align: right; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: rgb(100, 116, 139); }
+  .hdr-b { position: absolute; left: 880px; top: 19px; width: 200px; text-align: right; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: rgb(37, 99, 235); }
+
+  .row { position: absolute; left: 0; width: 1120px; height: 76px; border-bottom: 1px solid rgb(241, 245, 249); }
+  .row:last-child { border-bottom: 0; }
+  .row-label { position: absolute; left: 32px; top: 28px; font-size: 17px; font-weight: 500; color: rgb(15, 23, 42); }
+  .row-a { position: absolute; left: 640px; top: 22px; width: 200px; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 26px; color: rgb(100, 116, 139); }
+  .row-b { position: absolute; left: 880px; top: 22px; width: 200px; text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 26px; color: rgb(15, 23, 42); }
+</style>
+</head>
+<body>
+  <div class="accent-bar"></div>
+  <div class="heading" data-slot="heading">Period over period</div>
+
+  <div class="table">
+    <div class="header-row">
+      <div class="hdr-metric">METRIC</div>
+      <div class="hdr-a" data-slot="col_a_label">LAST PERIOD</div>
+      <div class="hdr-b" data-slot="col_b_label">THIS PERIOD</div>
+    </div>
+    <div class="row" style="top: 56px;">
+      <div class="row-label" data-slot="row_1_label">First row</div>
+      <div class="row-a" data-slot="row_1_a">100</div>
+      <div class="row-b" data-slot="row_1_b">124</div>
+    </div>
+    <div class="row" style="top: 132px;">
+      <div class="row-label" data-slot="row_2_label">Second row</div>
+      <div class="row-a" data-slot="row_2_a">$2.9M</div>
+      <div class="row-b" data-slot="row_2_b">$3.2M</div>
+    </div>
+    <div class="row" style="top: 208px;">
+      <div class="row-label" data-slot="row_3_label">Third row</div>
+      <div class="row-a" data-slot="row_3_a">91.7%</div>
+      <div class="row-b" data-slot="row_3_b">94.1%</div>
+    </div>
+    <div class="row" style="top: 284px;">
+      <div class="row-label" data-slot="row_4_label">Fourth row</div>
+      <div class="row-a" data-slot="row_4_a">6.2s</div>
+      <div class="row-b" data-slot="row_4_b">5.8s</div>
+    </div>
+  </div>
+</body>
+</html>

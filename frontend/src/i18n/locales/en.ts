@@ -48,6 +48,7 @@ const en = {
     monitoring: "Monitoring",
     knowledgeBase: "Knowledge Base",
     knowledgeBaseDetail: "KB Detail",
+    slides: "Slides",
     userManagement: "User Management",
     adminMcp: "Public MCP Apps",
     login: "Login",
