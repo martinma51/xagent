@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Layers, ChevronRight, Loader2 } from "lucide-react";
+import {
+  Search,
+  Layers,
+  ChevronRight,
+  Loader2,
+  Upload,
+  X,
+} from "lucide-react";
 
 import { apiRequest } from "@/lib/api-wrapper";
 import { cn, getApiUrl } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { SlideTemplateInfo } from "@/types/slide_template";
 import type { DeckDetail } from "@/types/slide_deck";
 
@@ -28,6 +36,55 @@ export default function SlidesGalleryPage() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [creatingFromTemplate, setCreatingFromTemplate] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Refetch the gallery; used after a successful upload so the new template
+  // appears immediately.
+  const refetchTemplates = useCallback(async () => {
+    try {
+      const res = await apiRequest(`${apiBase}/api/slide-templates/`);
+      if (!res.ok) return;
+      const data: SlideTemplateInfo[] = await res.json();
+      setTemplates(data);
+    } catch {
+      /* swallow */
+    }
+  }, [apiBase]);
+
+  const handleUploadFile = useCallback(
+    async (file: File) => {
+      setUploading(true);
+      setUploadError(null);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("name", file.name.replace(/\.pptx$/i, ""));
+        const res = await apiRequest(
+          `${apiBase}/api/user-slide-templates/upload`,
+          { method: "POST", body: formData }
+        );
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            detail = typeof body.detail === "string" ? body.detail : detail;
+          } catch {
+            /* not json */
+          }
+          throw new Error(detail);
+        }
+        await refetchTemplates();
+      } catch (err) {
+        setUploadError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [apiBase, refetchTemplates]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -120,20 +177,59 @@ export default function SlidesGalleryPage() {
             Browse a curated set of ready-made decks, fill in your content, and
             export to PowerPoint.
           </p>
-          <div className="relative w-full max-w-xl">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex w-full max-w-2xl items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search templates…"
+                className={cn(
+                  "h-11 w-full rounded-full border border-border bg-card pl-11 pr-4 text-sm",
+                  "outline-none transition placeholder:text-muted-foreground/60",
+                  "focus:border-primary focus:ring-2 focus:ring-primary/20"
+                )}
+              />
+            </div>
             <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search templates…"
-              className={cn(
-                "h-11 w-full rounded-full border border-border bg-card pl-11 pr-4 text-sm",
-                "outline-none transition placeholder:text-muted-foreground/60",
-                "focus:border-primary focus:ring-2 focus:ring-primary/20"
-              )}
+              ref={fileInputRef}
+              type="file"
+              accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleUploadFile(f);
+              }}
             />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-11 shrink-0 rounded-full px-4"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              title="Upload a .pptx to convert into a template"
+            >
+              {uploading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="mr-2 h-4 w-4" />
+              )}
+              {uploading ? "Importing…" : "Upload .pptx"}
+            </Button>
           </div>
+          {uploadError && (
+            <div className="mt-3 flex max-w-2xl items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              <span className="flex-1 text-left">Upload failed: {uploadError}</span>
+              <button
+                onClick={() => setUploadError(null)}
+                className="shrink-0 text-destructive hover:opacity-70"
+                aria-label="Dismiss"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
