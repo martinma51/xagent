@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Layers, ChevronRight, Loader2 } from "lucide-react";
 
@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/api-wrapper";
 import { cn, getApiUrl } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { SlideTemplateInfo } from "@/types/slide_template";
+import type { DeckDetail } from "@/types/slide_deck";
 
 /**
  * Slide-template gallery.
@@ -25,6 +26,8 @@ export default function SlidesGalleryPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [creatingFromTemplate, setCreatingFromTemplate] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +60,40 @@ export default function SlidesGalleryPage() {
     });
     return ["All", ...Array.from(set).sort()];
   }, [templates]);
+
+  // "Use template" → create a deck bootstrapped from this template, navigate.
+  const handleUseTemplate = useCallback(
+    async (template: SlideTemplateInfo) => {
+      setCreatingFromTemplate(template.id);
+      setCreateError(null);
+      try {
+        const res = await apiRequest(`${apiBase}/api/decks/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            template_id: template.id,
+            title: template.name,
+          }),
+        });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            detail = typeof body.detail === "string" ? body.detail : detail;
+          } catch {
+            /* not json */
+          }
+          throw new Error(detail);
+        }
+        const deck: DeckDetail = await res.json();
+        router.push(`/slides/${deck.id}`);
+      } catch (err) {
+        setCreateError(err instanceof Error ? err.message : String(err));
+        setCreatingFromTemplate(null);
+      }
+    },
+    [apiBase, router]
+  );
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -122,6 +159,11 @@ export default function SlidesGalleryPage() {
 
       {/* Grid */}
       <div className="mx-auto w-full max-w-6xl flex-1 px-6 pb-16 pt-6">
+        {createError && (
+          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+            Could not create deck: {createError}
+          </div>
+        )}
         {loading ? (
           <div className="flex h-64 items-center justify-center text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -142,7 +184,8 @@ export default function SlidesGalleryPage() {
                 key={t.id}
                 template={t}
                 apiBase={apiBase}
-                onUse={() => router.push(`/slides/${encodeURIComponent(t.id)}`)}
+                busy={creatingFromTemplate === t.id}
+                onUse={() => void handleUseTemplate(t)}
               />
             ))}
           </div>
@@ -155,10 +198,12 @@ export default function SlidesGalleryPage() {
 function SlideTemplateCard({
   template,
   apiBase,
+  busy,
   onUse,
 }: {
   template: SlideTemplateInfo;
   apiBase: string;
+  busy: boolean;
   onUse: () => void;
 }) {
   const coverUrl = template.thumbnail_urls[0]
@@ -168,9 +213,11 @@ function SlideTemplateCard({
   return (
     <button
       onClick={onUse}
+      disabled={busy}
       className={cn(
         "group flex flex-col overflow-hidden rounded-xl border border-border bg-card text-left",
-        "transition hover:border-primary/40 hover:shadow-md"
+        "transition hover:border-primary/40 hover:shadow-md",
+        busy && "opacity-60"
       )}
     >
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
@@ -206,8 +253,17 @@ function SlideTemplateCard({
           {template.description}
         </p>
         <div className="mt-auto flex items-center gap-1 pt-2 text-xs font-medium text-primary opacity-0 transition group-hover:opacity-100">
-          Use template
-          <ChevronRight className="h-3 w-3" />
+          {busy ? (
+            <>
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Creating deck…
+            </>
+          ) : (
+            <>
+              Use template
+              <ChevronRight className="h-3 w-3" />
+            </>
+          )}
         </div>
       </div>
     </button>
