@@ -943,12 +943,12 @@ export function Sidebar({ className, allowCollapse = true }: SidebarProps) {
                                   <div
                                     key={child.name}
                                     className="group flex items-center px-4 py-2 text-sm font-medium rounded-lg mx-2 text-muted-foreground/50 cursor-not-allowed select-none"
-                                    title="Coming soon"
+                                    title={t("nav.comingSoon")}
                                   >
                                     <child.icon className="h-4 w-4 mr-3 text-muted-foreground/50" />
                                     <span className="flex-1 truncate">{childLabel}</span>
                                     <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-                                      Soon
+                                      {t("nav.soon")}
                                     </span>
                                   </div>
                                 )

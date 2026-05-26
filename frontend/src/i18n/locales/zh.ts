@@ -56,6 +56,8 @@ const zh = {
     aiImage: "AI 图像",
     aiResearch: "AI 调研",
     aiMeetingNotes: "AI 会议纪要",
+    comingSoon: "即将上线",
+    soon: "敬请期待",
     userManagement: "用户管理",
     adminMcp: "公共 MCP",
     login: "登录",

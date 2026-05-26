@@ -56,6 +56,8 @@ const en = {
     aiImage: "AI Image",
     aiResearch: "AI Research",
     aiMeetingNotes: "AI Meeting Notes",
+    comingSoon: "Coming soon",
+    soon: "Soon",
     userManagement: "User Management",
     adminMcp: "Public MCP Apps",
     login: "Login",
