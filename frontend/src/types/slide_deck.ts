@@ -31,6 +31,9 @@ export interface DeckInfo {
   page_count: number;
   created_at: string;
   updated_at: string;
+  /** Phase D5: 'pending' | 'done' | 'error' | null (legacy/sync-created). */
+  generation_status?: string | null;
+  generation_error?: string | null;
 }
 
 export interface DeckDetail extends DeckInfo {

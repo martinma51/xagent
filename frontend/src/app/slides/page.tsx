@@ -223,7 +223,11 @@ export default function SlidesGalleryPage() {
         throw new Error(detail);
       }
       const deck: DeckDetail = await res.json();
-      router.push(`/slides/${deck.id}`);
+      // Phase D5: the backend now returns immediately with
+      // generation_status='pending' and runs the LLM in a BackgroundTask.
+      // The /generate/{id} route polls until the deck is ready then routes
+      // to the editor, matching the PDF page 9 intermediate-task design.
+      router.push(`/generate/${deck.id}`);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : String(err));
       setGenerating(false);

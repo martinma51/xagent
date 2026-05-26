@@ -11,13 +11,14 @@ users can compose decks from any combination of layouts across templates.
 
 from __future__ import annotations
 
+import copy
 import logging
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -31,7 +32,7 @@ from ...core.tools.core.slides_tool import (
     template_to_initial_pages,
 )
 from ..auth_dependencies import get_current_user
-from ..models.database import get_db
+from ..models.database import get_db, get_session_local
 from ..models.deck import SlideDeck
 from ..models.user import User
 
@@ -70,6 +71,14 @@ class DeckInfo(BaseModel):
     page_count: int
     created_at: datetime
     updated_at: datetime
+    # Phase D5: the /generate/{id} intermediate page polls this to know
+    # when to redirect to the editor. NULL == synchronous-created deck →
+    # treated as "done" by the client.
+    generation_status: Optional[str] = Field(
+        default=None,
+        description="'pending', 'done', 'error', or null (legacy/sync-created).",
+    )
+    generation_error: Optional[str] = Field(default=None)
 
 
 class DeckDetail(DeckInfo):
@@ -169,6 +178,8 @@ def _to_info(deck: SlideDeck) -> DeckInfo:
         page_count=len(pages),
         created_at=deck.created_at,
         updated_at=deck.updated_at,
+        generation_status=deck.generation_status,
+        generation_error=deck.generation_error,
     )
 
 
@@ -182,6 +193,8 @@ def _to_detail(deck: SlideDeck) -> DeckDetail:
         page_count=len(pages),
         created_at=deck.created_at,
         updated_at=deck.updated_at,
+        generation_status=deck.generation_status,
+        generation_error=deck.generation_error,
         pages=[DeckPageEntry(**p) for p in pages],
     )
 
@@ -277,29 +290,101 @@ async def create_deck(
     return _to_detail(deck)
 
 
+async def _fill_deck_in_background(
+    deck_id: int, template_id: str, topic: str
+) -> None:
+    """Run the LLM auto-fill in the background then write results to the deck.
+
+    Lives outside the request scope: opens its own DB session, swallows
+    exceptions into ``generation_status='error'`` so the frontend can show
+    a useful message instead of just timing out a poll.
+    """
+    SessionLocal = get_session_local()
+    try:
+        fill = await auto_fill_slots(template_id, topic)
+    except Exception as exc:
+        logger.exception("decks: auto-fill crashed for deck %s", deck_id)
+        fill = {"success": False, "error": f"auto-fill crashed: {exc}"}
+
+    db = SessionLocal()
+    try:
+        deck = db.query(SlideDeck).filter(SlideDeck.id == deck_id).first()
+        if deck is None:
+            logger.warning(
+                "decks: background fill found deck %s missing — was it deleted?",
+                deck_id,
+            )
+            return
+
+        if not fill.get("success"):
+            deck.generation_status = "error"
+            deck.generation_error = (
+                fill.get("error", "auto-fill failed") or "auto-fill failed"
+            )
+            db.commit()
+            return
+
+        filled_by_idx: Dict[int, Dict[str, str]] = fill.get("slot_values", {}) or {}
+        # Deep-copy so SQLAlchemy sees a brand-new list reference for the JSON
+        # column — without this it ignores in-place mutations on the existing
+        # value and silently drops the LLM output on commit.
+        pages_list: List[Dict[str, Any]] = copy.deepcopy(deck.pages or [])
+        for entry in pages_list:
+            try:
+                page_idx = int(entry["layout_id"].rsplit(":", 1)[1])
+            except (KeyError, IndexError, ValueError):
+                continue
+            page_slots = (
+                filled_by_idx.get(page_idx) or filled_by_idx.get(str(page_idx)) or {}
+            )
+            merged: Dict[str, str] = {
+                k: v
+                for k, v in page_slots.items()
+                if isinstance(k, str) and isinstance(v, str)
+            }
+            entry["slot_values"] = merged
+
+        deck.pages = pages_list
+        deck.generation_status = "done"
+        deck.generation_error = None
+        db.commit()
+        logger.info(
+            "decks: background fill done for deck %s (model=%s)",
+            deck_id, fill.get("model"),
+        )
+    except Exception as exc:
+        logger.exception("decks: background fill commit failed for %s", deck_id)
+        try:
+            db.rollback()
+            deck = db.query(SlideDeck).filter(SlideDeck.id == deck_id).first()
+            if deck is not None:
+                deck.generation_status = "error"
+                deck.generation_error = f"persistence failed: {exc}"
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 @router.post("/generate", response_model=DeckDetail)
 async def generate_deck(
     body: DeckGenerateRequest,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DeckDetail:
-    """Create a deck with every slot pre-filled by the LLM (Phase D2).
+    """Create a deck whose slots will be filled by the LLM in the background.
 
-    Flow:
-      1. Validate the user can use this template (built-in or one they own).
-      2. Bootstrap the page sequence from the template.
-      3. Run ``auto_fill_slots(template_id, topic)`` to get
-         ``{page_idx: {slot: text}}``.
-      4. Merge into the bootstrapped pages and persist the deck.
-
-    The LLM call dominates latency (~10–30 s depending on model). Callers
-    should show a loading state.
+    Phase D5: instead of blocking the request for the full LLM call
+    (10–30 s), we persist the deck shell with ``generation_status='pending'``
+    and schedule the fill in a BackgroundTask. The frontend can immediately
+    route to ``/generate/{deck.id}`` and poll ``GET /api/decks/{id}`` until
+    status flips to ``'done'`` (or ``'error'``).
     """
     user_id = int(current_user.id)
 
-    count = (
-        db.query(SlideDeck).filter(SlideDeck.user_id == user_id).count()
-    )
+    count = db.query(SlideDeck).filter(SlideDeck.user_id == user_id).count()
     if count >= MAX_DECKS_PER_USER:
         raise HTTPException(
             status_code=400,
@@ -318,28 +403,6 @@ async def generate_deck(
         raise HTTPException(status_code=400, detail=bootstrap.get("error", "bad template"))
     pages_list: List[Dict[str, Any]] = bootstrap["pages"]
 
-    fill = await auto_fill_slots(body.template_id, body.topic)
-    if not fill.get("success"):
-        raise HTTPException(
-            status_code=502,
-            detail=fill.get("error", "auto-fill failed"),
-        )
-    filled_by_idx: Dict[int, Dict[str, str]] = fill.get("slot_values", {}) or {}
-    # Merge — LLM-supplied values override (empty) bootstrap defaults.
-    for entry in pages_list:
-        # Layout id is "<template_id>:<idx>" by convention.
-        try:
-            page_idx = int(entry["layout_id"].rsplit(":", 1)[1])
-        except (KeyError, IndexError, ValueError):
-            continue
-        page_slots = filled_by_idx.get(page_idx) or filled_by_idx.get(str(page_idx)) or {}
-        # Only copy known string values; drop anything the LLM hallucinated as
-        # nested / non-string so it never reaches the renderer.
-        merged: Dict[str, str] = {
-            k: v for k, v in page_slots.items() if isinstance(k, str) and isinstance(v, str)
-        }
-        entry["slot_values"] = merged
-
     template_meta = found["template"]
     deck = SlideDeck(
         user_id=user_id,
@@ -347,13 +410,19 @@ async def generate_deck(
         title=(body.title or template_meta.get("name") or "Untitled deck").strip(),
         topic=body.topic.strip(),
         pages=pages_list,
+        generation_status="pending",
     )
     db.add(deck)
     db.commit()
     db.refresh(deck)
+
+    background_tasks.add_task(
+        _fill_deck_in_background, deck.id, body.template_id, body.topic.strip()
+    )
+
     logger.info(
-        "decks: AI-generated deck #%s from template %s for user %s (model=%s)",
-        deck.id, body.template_id, user_id, fill.get("model"),
+        "decks: queued AI fill for deck #%s (template=%s user=%s)",
+        deck.id, body.template_id, user_id,
     )
     return _to_detail(deck)
 

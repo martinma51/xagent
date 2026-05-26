@@ -9,9 +9,9 @@ pages themselves can mix layouts across templates.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -38,6 +38,16 @@ class SlideDeck(Base):  # type: ignore[misc]
     pages: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON, nullable=False, default=list
     )
+
+    # Phase D5: when /api/decks/generate kicks off an LLM fill it persists the
+    # deck shell first and runs the fill in a BackgroundTask, so the frontend
+    # can route to /generate/{id} and poll for completion. NULL means the deck
+    # was created the synchronous way (legacy rows or non-AI creation) and is
+    # treated as "done" by the polling page.
+    generation_status: Mapped[Optional[str]] = mapped_column(
+        String(24), nullable=True
+    )
+    generation_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.now, nullable=False
