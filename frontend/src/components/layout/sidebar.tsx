@@ -221,10 +221,9 @@ export const getNavigationGroupsForUser = (user: any): NavigationGroup[] => [
           {
             name: "AI Image",
             nameKey: "nav.aiImage",
-            href: "#",
+            href: "/images",
             icon: ImageIcon,
             color: "text-purple-400",
-            disabled: true,
           },
           {
             name: "AI Research",

@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import {
   ChevronRight, Layers, Bot, Database,
-  Sparkles, Play, Heart, Clock, Send, ListChecks, Loader2
+  Sparkles, Play, Heart, Clock, Send, ListChecks, Loader2,
+  Paperclip, X, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,6 +60,35 @@ export default function Home() {
   const [visibleGetStartedVideos, setVisibleGetStartedVideos] = useState<Set<number>>(new Set());
   const getStartedSectionRef = useRef<HTMLDivElement | null>(null);
   const homeChatInputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Hero prompt attachments — drag-drop or file picker. Files are kept locally
+  // and surfaced as chips below the textarea. Plumbing them through to the
+  // task API is out of scope for D3 (the chat task endpoint doesn't accept
+  // multipart bodies yet) but the UI already collects them so the upgrade is
+  // a one-day change once the backend lands.
+  const homeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const addAttachedFiles = (incoming: FileList | File[] | null) => {
+    if (!incoming) return;
+    const arr = Array.from(incoming);
+    if (arr.length === 0) return;
+    setAttachedFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}:${f.size}`));
+      return [...prev, ...arr.filter((f) => !seen.has(`${f.name}:${f.size}`))];
+    });
+  };
+
+  const removeAttachedFile = (idx: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const formatBytes = (n: number) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -265,34 +295,104 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="w-full max-w-2xl bg-[hsl(234_30%_25%/0.4)] border border-[hsl(234_30%_35%)] rounded-[18px] p-3 flex items-end shadow-[0_12px_40px_rgba(0,0,0,0.25)] backdrop-blur-md focus-within:border-[hsl(234_50%_50%)] focus-within:shadow-[0_0_0_4px_hsl(234_50%_50%/0.2),0_12px_40px_rgba(0,0,0,0.25)] transition-all duration-200">
-            <textarea
-              ref={homeChatInputRef}
-              placeholder={t("home.hero.searchPlaceholder")}
-              className="border-0 bg-transparent text-white text-[16px] leading-relaxed placeholder:text-[hsl(240_5%_60%)] focus-visible:ring-0 focus-visible:outline-none flex-1 resize-none overflow-hidden min-h-[28px] max-h-[120px] py-1 px-2"
-              rows={1}
-              onInput={(e) => {
-                const target = e.target as HTMLTextAreaElement;
-                target.style.height = "auto";
-                target.style.height = Math.min(target.scrollHeight, 120) + "px";
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  if (e.currentTarget.value.trim() && !isCreating) {
-                    handleCreateTask(e.currentTarget.value.trim());
-                  }
-                }
+          <div
+            className={`w-full max-w-2xl bg-[hsl(234_30%_25%/0.4)] border rounded-[18px] p-3 shadow-[0_12px_40px_rgba(0,0,0,0.25)] backdrop-blur-md transition-all duration-200 ${
+              isDragOver
+                ? "border-[hsl(234_50%_60%)] border-dashed shadow-[0_0_0_4px_hsl(234_50%_50%/0.25),0_12px_40px_rgba(0,0,0,0.25)]"
+                : "border-[hsl(234_30%_35%)] focus-within:border-[hsl(234_50%_50%)] focus-within:shadow-[0_0_0_4px_hsl(234_50%_50%/0.2),0_12px_40px_rgba(0,0,0,0.25)]"
+            }`}
+            onDragOver={(e) => {
+              if (!e.dataTransfer?.types.includes("Files")) return;
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+              setIsDragOver(false);
+            }}
+            onDrop={(e) => {
+              if (!e.dataTransfer?.files?.length) return;
+              e.preventDefault();
+              setIsDragOver(false);
+              addAttachedFiles(e.dataTransfer.files);
+            }}
+          >
+            <input
+              ref={homeFileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                addAttachedFiles(e.target.files);
+                if (homeFileInputRef.current) homeFileInputRef.current.value = "";
               }}
             />
-            <Button
-              size="icon"
-              className="bg-[hsl(234_40%_40%)] hover:bg-[hsl(234_40%_45%)] text-white rounded-[12px] shrink-0 w-9 h-9 ml-3 transition-colors shadow-none disabled:opacity-50"
-              onClick={handleChatButtonClick}
-              disabled={isCreating}
-            >
-              {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
+            {attachedFiles.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {attachedFiles.map((f, i) => (
+                  <span
+                    key={`${f.name}-${i}`}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(234_40%_40%)]/60 px-2.5 py-1 text-[12px] text-white border border-[hsl(234_30%_50%)]"
+                    title={`${f.name} · ${formatBytes(f.size)}`}
+                  >
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="max-w-[180px] truncate">{f.name}</span>
+                    <span className="text-[10px] text-white/60">{formatBytes(f.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachedFile(i)}
+                      className="rounded-full p-0.5 hover:bg-white/15"
+                      aria-label={`Remove ${f.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => homeFileInputRef.current?.click()}
+                className="shrink-0 mr-1 flex h-9 w-9 items-center justify-center rounded-[12px] text-white/70 hover:bg-[hsl(234_30%_35%)] hover:text-white transition-colors"
+                title="Attach files (or drag them onto this box)"
+                aria-label="Attach file"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+              <textarea
+                ref={homeChatInputRef}
+                placeholder={t("home.hero.searchPlaceholder")}
+                className="border-0 bg-transparent text-white text-[16px] leading-relaxed placeholder:text-[hsl(240_5%_60%)] focus-visible:ring-0 focus-visible:outline-none flex-1 resize-none overflow-hidden min-h-[28px] max-h-[120px] py-1 px-2"
+                rows={1}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = "auto";
+                  target.style.height = Math.min(target.scrollHeight, 120) + "px";
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (e.currentTarget.value.trim() && !isCreating) {
+                      handleCreateTask(e.currentTarget.value.trim());
+                    }
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                className="bg-[hsl(234_40%_40%)] hover:bg-[hsl(234_40%_45%)] text-white rounded-[12px] shrink-0 w-9 h-9 ml-3 transition-colors shadow-none disabled:opacity-50"
+                onClick={handleChatButtonClick}
+                disabled={isCreating}
+              >
+                {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </Button>
+            </div>
+            {isDragOver && (
+              <div className="mt-2 text-center text-xs text-white/70">
+                Drop files to attach
+              </div>
+            )}
           </div>
         </div>
       </div>
