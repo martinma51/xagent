@@ -23,7 +23,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...core.tools.core.slides_tool import (
+    auto_fill_slots,
     export_deck_pages_to_pptx,
+    get_slide_template,
     render_layout_html,
     resolve_layout,
     template_to_initial_pages,
@@ -74,6 +76,17 @@ class DeckDetail(DeckInfo):
     """Full deck with its ordered pages, used by the editor."""
 
     pages: List[DeckPageEntry] = Field(default_factory=list)
+
+
+class DeckGenerateRequest(BaseModel):
+    """Body for ``POST /api/decks/generate`` — AI auto-fills a fresh deck."""
+
+    template_id: str = Field(..., min_length=1, description="Template to start from.")
+    topic: str = Field(
+        ..., min_length=2, max_length=2000,
+        description="What the deck should be about. Drives every slot's copy.",
+    )
+    title: Optional[str] = Field(default=None, max_length=200)
 
 
 class DeckCreateRequest(BaseModel):
@@ -261,6 +274,87 @@ async def create_deck(
     db.add(deck)
     db.commit()
     db.refresh(deck)
+    return _to_detail(deck)
+
+
+@router.post("/generate", response_model=DeckDetail)
+async def generate_deck(
+    body: DeckGenerateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> DeckDetail:
+    """Create a deck with every slot pre-filled by the LLM (Phase D2).
+
+    Flow:
+      1. Validate the user can use this template (built-in or one they own).
+      2. Bootstrap the page sequence from the template.
+      3. Run ``auto_fill_slots(template_id, topic)`` to get
+         ``{page_idx: {slot: text}}``.
+      4. Merge into the bootstrapped pages and persist the deck.
+
+    The LLM call dominates latency (~10–30 s depending on model). Callers
+    should show a loading state.
+    """
+    user_id = int(current_user.id)
+
+    count = (
+        db.query(SlideDeck).filter(SlideDeck.user_id == user_id).count()
+    )
+    if count >= MAX_DECKS_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"deck limit reached ({MAX_DECKS_PER_USER}); delete some first",
+        )
+
+    found = get_slide_template(body.template_id, user_id=user_id)
+    if not found.get("success"):
+        raise HTTPException(
+            status_code=404,
+            detail=found.get("error", f"template '{body.template_id}' not found"),
+        )
+
+    bootstrap = template_to_initial_pages(body.template_id, user_id=user_id)
+    if not bootstrap.get("success"):
+        raise HTTPException(status_code=400, detail=bootstrap.get("error", "bad template"))
+    pages_list: List[Dict[str, Any]] = bootstrap["pages"]
+
+    fill = await auto_fill_slots(body.template_id, body.topic)
+    if not fill.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=fill.get("error", "auto-fill failed"),
+        )
+    filled_by_idx: Dict[int, Dict[str, str]] = fill.get("slot_values", {}) or {}
+    # Merge — LLM-supplied values override (empty) bootstrap defaults.
+    for entry in pages_list:
+        # Layout id is "<template_id>:<idx>" by convention.
+        try:
+            page_idx = int(entry["layout_id"].rsplit(":", 1)[1])
+        except (KeyError, IndexError, ValueError):
+            continue
+        page_slots = filled_by_idx.get(page_idx) or filled_by_idx.get(str(page_idx)) or {}
+        # Only copy known string values; drop anything the LLM hallucinated as
+        # nested / non-string so it never reaches the renderer.
+        merged: Dict[str, str] = {
+            k: v for k, v in page_slots.items() if isinstance(k, str) and isinstance(v, str)
+        }
+        entry["slot_values"] = merged
+
+    template_meta = found["template"]
+    deck = SlideDeck(
+        user_id=user_id,
+        template_id=body.template_id,
+        title=(body.title or template_meta.get("name") or "Untitled deck").strip(),
+        topic=body.topic.strip(),
+        pages=pages_list,
+    )
+    db.add(deck)
+    db.commit()
+    db.refresh(deck)
+    logger.info(
+        "decks: AI-generated deck #%s from template %s for user %s (model=%s)",
+        deck.id, body.template_id, user_id, fill.get("model"),
+    )
     return _to_detail(deck)
 
 

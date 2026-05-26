@@ -49,6 +49,8 @@ export default function SlidesGalleryPage() {
   const [promptText, setPromptText] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [generateNote, setGenerateNote] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Refetch the gallery; used after a successful upload so the new template
   // appears immediately.
@@ -195,6 +197,39 @@ export default function SlidesGalleryPage() {
     [apiBase, router]
   );
 
+  // POST /api/decks/generate — runs LLM auto-fill (10–30 s) then opens the
+  // editor on the new deck.
+  const handleGenerate = useCallback(async () => {
+    if (!selectedTemplateId || !promptText.trim()) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      const res = await apiRequest(`${apiBase}/api/decks/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: selectedTemplateId,
+          topic: promptText.trim(),
+        }),
+      });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          detail = typeof body.detail === "string" ? body.detail : detail;
+        } catch {
+          /* not json */
+        }
+        throw new Error(detail);
+      }
+      const deck: DeckDetail = await res.json();
+      router.push(`/slides/${deck.id}`);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : String(err));
+      setGenerating(false);
+    }
+  }, [apiBase, router, selectedTemplateId, promptText]);
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return templates.filter((t) => {
@@ -244,12 +279,17 @@ export default function SlidesGalleryPage() {
                 onChange={(e) => setPromptText(e.target.value)}
                 placeholder="What’s the deck about? e.g. Q2 product roadmap for leadership"
                 className="h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                disabled={generating}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && promptText.trim()) {
+                  if (e.key !== "Enter") return;
+                  if (!selectedTemplateId) {
                     setGenerateNote(
-                      "AI auto-generate is coming in the next phase. For now, pick a template card below to start a deck."
+                      "Pick a template below first — the AI fills its slots using your prompt."
                     );
+                    return;
                   }
+                  if (!promptText.trim()) return;
+                  void handleGenerate();
                 }}
               />
               <button
@@ -267,15 +307,23 @@ export default function SlidesGalleryPage() {
               <Button
                 size="sm"
                 className="h-9 rounded-full px-4"
-                disabled={!promptText.trim()}
+                disabled={!promptText.trim() || generating}
                 onClick={() => {
-                  setGenerateNote(
-                    "AI auto-generate is coming in the next phase. For now, pick a template card below to start a deck."
-                  );
+                  if (!selectedTemplateId) {
+                    setGenerateNote(
+                      "Pick a template below first — the AI fills its slots using your prompt."
+                    );
+                    return;
+                  }
+                  void handleGenerate();
                 }}
               >
-                <Sparkles className="mr-1 h-3.5 w-3.5" />
-                Generate
+                {generating ? (
+                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-1 h-3.5 w-3.5" />
+                )}
+                {generating ? "Generating…" : "Generate"}
               </Button>
             </div>
 
@@ -299,6 +347,28 @@ export default function SlidesGalleryPage() {
                 <button
                   onClick={() => setGenerateNote(null)}
                   className="shrink-0 hover:opacity-70"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {generating && (
+              <div className="mt-3 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-primary">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span className="flex-1 text-left">
+                  Drafting your deck with AI — this usually takes 10–30 seconds…
+                </span>
+              </div>
+            )}
+            {generateError && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <span className="flex-1 text-left">
+                  Generate failed: {generateError}
+                </span>
+                <button
+                  onClick={() => setGenerateError(null)}
+                  className="shrink-0 text-destructive hover:opacity-70"
                   aria-label="Dismiss"
                 >
                   <X className="h-3 w-3" />
@@ -431,6 +501,10 @@ export default function SlidesGalleryPage() {
                 apiBase={apiBase}
                 busy={creatingFromTemplate === t.id}
                 deleting={deletingId === t.id}
+                selected={selectedTemplateId === t.id}
+                onSelect={() =>
+                  setSelectedTemplateId((cur) => (cur === t.id ? null : t.id))
+                }
                 onUse={() => void handleUseTemplate(t)}
                 onDelete={
                   t.is_user_uploaded
@@ -451,14 +525,18 @@ function SlideTemplateCard({
   apiBase,
   busy,
   deleting,
+  selected,
   onUse,
+  onSelect,
   onDelete,
 }: {
   template: SlideTemplateInfo;
   apiBase: string;
   busy: boolean;
   deleting: boolean;
+  selected: boolean;
   onUse: () => void;
+  onSelect: () => void;
   onDelete?: () => void;
 }) {
   const coverUrl = template.thumbnail_urls[0]
@@ -468,10 +546,19 @@ function SlideTemplateCard({
   return (
     <div
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-xl border border-border bg-card text-left",
-        "transition hover:border-primary/40 hover:shadow-md",
+        "group relative flex flex-col overflow-hidden rounded-xl border bg-card text-left",
+        "transition hover:shadow-md cursor-pointer",
+        selected
+          ? "border-primary ring-2 ring-primary/30"
+          : "border-border hover:border-primary/40",
         (busy || deleting) && "opacity-60"
       )}
+      onClick={(e) => {
+        // Stop clicks that came from inner buttons (delete / Use button).
+        const target = e.target as HTMLElement;
+        if (target.closest("button")) return;
+        onSelect();
+      }}
     >
       {onDelete && (
         <button
@@ -495,12 +582,6 @@ function SlideTemplateCard({
           )}
         </button>
       )}
-      <button
-        type="button"
-        onClick={onUse}
-        disabled={busy || deleting}
-        className="flex flex-1 flex-col text-left disabled:cursor-not-allowed"
-      >
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
         {coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -522,6 +603,32 @@ function SlideTemplateCard({
             {template.category}
           </Badge>
         )}
+        {selected && (
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-primary/90 px-3 py-2 text-xs font-medium text-primary-foreground backdrop-blur">
+            <span className="flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> Selected
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUse();
+              }}
+              disabled={busy || deleting}
+              className="rounded-full bg-background/95 px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-background disabled:opacity-60"
+              title="Skip AI and start with empty slots"
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="mr-1 inline-block h-3 w-3 animate-spin" />
+                  Opening…
+                </>
+              ) : (
+                <>Use without AI →</>
+              )}
+            </button>
+          </div>
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-2 px-4 py-3">
         <div className="flex items-center justify-between">
@@ -533,21 +640,13 @@ function SlideTemplateCard({
         <p className="line-clamp-2 text-sm text-muted-foreground">
           {template.description}
         </p>
-        <div className="mt-auto flex items-center gap-1 pt-2 text-xs font-medium text-primary opacity-0 transition group-hover:opacity-100">
-          {busy ? (
-            <>
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Creating deck…
-            </>
-          ) : (
-            <>
-              Use template
-              <ChevronRight className="h-3 w-3" />
-            </>
-          )}
-        </div>
+        {!selected && (
+          <div className="mt-auto flex items-center gap-1 pt-2 text-xs font-medium text-primary opacity-0 transition group-hover:opacity-100">
+            <ChevronRight className="h-3 w-3" />
+            Tap to select
+          </div>
+        )}
       </div>
-      </button>
     </div>
   );
 }
