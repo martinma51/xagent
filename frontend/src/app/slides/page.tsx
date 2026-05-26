@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Loader2,
-  Upload,
   X,
   Trash2,
   Paperclip,
@@ -298,15 +297,16 @@ export default function SlidesGalleryPage() {
               />
               <button
                 type="button"
-                onClick={() =>
-                  setGenerateNote(
-                    "Attaching files to ground the AI is coming with the auto-generate flow. For now, use Upload .pptx below to import a template."
-                  )
-                }
-                title="Attach a file for grounding (coming next)"
-                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                title="Upload a .pptx — turns it into a new template you can pick below"
+                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
               >
-                <Paperclip className="h-4 w-4" />
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Paperclip className="h-4 w-4" />
+                )}
               </button>
               <Button
                 size="sm"
@@ -440,7 +440,7 @@ export default function SlidesGalleryPage() {
             ))}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-3">
+        <div className="flex items-center gap-2 border-t border-border/40 pt-3">
           <div className="relative w-64 max-w-full">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -455,21 +455,6 @@ export default function SlidesGalleryPage() {
               )}
             />
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 shrink-0 rounded-full px-3 text-xs"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            title="Import a .pptx as a new template"
-          >
-            {uploading ? (
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-            )}
-            {uploading ? "Importing…" : "Upload .pptx"}
-          </Button>
         </div>
       </div>
 
