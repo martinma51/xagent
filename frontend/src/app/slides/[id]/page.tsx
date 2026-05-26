@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -252,15 +253,24 @@ export default function DeckEditorPage() {
   }, [currentHtmlForActive, activePageIdx]);
 
   // ----- iframe scaling --------------------------------------------------
+  // Watch the preview container's width and keep `scale` in sync. Keeping
+  // [deck] in the dep array used to recreate the ResizeObserver on every
+  // keystroke (deck changes whenever a slot value updates) — each
+  // disconnect/reconnect could measure clientWidth slightly differently
+  // and ripple a re-render through the whole editor. The observer only
+  // needs to bind to the DOM node once.
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setScale(el.clientWidth / 1280);
+    const update = () => {
+      const next = el.clientWidth / 1280;
+      setScale((prev) => (Math.abs(prev - next) < 0.0005 ? prev : next));
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [deck]);
+  }, []);
 
   // ----- mutations --------------------------------------------------------
   const updateSlot = useCallback(
@@ -898,7 +908,7 @@ function SaveIndicator({
   return null;
 }
 
-function PageThumb({
+const PageThumb = memo(function PageThumb({
   idx,
   entry,
   layout,
@@ -1007,7 +1017,7 @@ function PageThumb({
       </button>
     </div>
   );
-}
+});
 
 function SlotField({
   name,
