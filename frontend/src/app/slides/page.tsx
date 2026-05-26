@@ -265,9 +265,9 @@ export default function SlidesGalleryPage() {
       </div>
 
       {/* Hero — title + subtitle + generate prompt (PDF: AI Slides landing) */}
-      <div className="w-full bg-background pb-2 pt-8">
+      <div className="w-full bg-background pb-2 pt-10">
         <div className="mx-auto w-full max-w-3xl px-6">
-          <div className="rounded-2xl border border-border bg-muted/40 px-8 py-10 text-center">
+          <div className="px-2 text-center">
             <h1 className="mb-2 text-3xl font-bold tracking-tight text-foreground">
               AI Slides
             </h1>
@@ -410,9 +410,11 @@ export default function SlidesGalleryPage() {
         </div>
       </div>
 
-      {/* Templates header row — label on the left, category pills on the right */}
-      <div className="mx-auto w-full max-w-6xl px-6 pt-8">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      {/* Templates header row — PDF page 6: label on the left, category pills
+          flowing to the right on the same line; secondary tools (search +
+          upload) live in a smaller utility row below. */}
+      <div className="mx-auto w-full max-w-6xl px-6 pt-10">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold tracking-tight text-foreground">
               Templates
@@ -421,53 +423,53 @@ export default function SlidesGalleryPage() {
               Pick one to get a head start.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search templates…"
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {categories.map((c) => (
+              <button
+                key={c}
+                onClick={() => setSelectedCategory(c)}
                 className={cn(
-                  "h-9 w-full rounded-full border border-border bg-card pl-8 pr-3 text-xs",
-                  "outline-none transition placeholder:text-muted-foreground/60",
-                  "focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  "h-7 rounded-full px-3 text-xs font-medium transition",
+                  selectedCategory === c
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 shrink-0 rounded-full px-3 text-xs"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              title="Import a .pptx as a new template"
-            >
-              {uploading ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
-              )}
-              {uploading ? "Importing…" : "Upload .pptx"}
-            </Button>
+              >
+                {c}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setSelectedCategory(c)}
+        <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-3">
+          <div className="relative w-64 max-w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search templates…"
               className={cn(
-                "h-8 rounded-full px-3 text-xs font-medium transition",
-                selectedCategory === c
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                "h-9 w-full rounded-full border border-border bg-card pl-8 pr-3 text-xs",
+                "outline-none transition placeholder:text-muted-foreground/60",
+                "focus:border-primary focus:ring-2 focus:ring-primary/20"
               )}
-            >
-              {c}
-            </button>
-          ))}
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 shrink-0 rounded-full px-3 text-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            title="Import a .pptx as a new template"
+          >
+            {uploading ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Upload className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            {uploading ? "Importing…" : "Upload .pptx"}
+          </Button>
         </div>
       </div>
 

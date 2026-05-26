@@ -233,14 +233,14 @@ export default function ImagesLandingPage() {
       </div>
 
       {/* Hero */}
-      <div className="w-full bg-background pb-2 pt-8">
+      <div className="w-full bg-background pb-2 pt-10">
         <div className="mx-auto w-full max-w-3xl px-6">
           <div
             className={cn(
-              "rounded-2xl border bg-muted/40 px-8 py-10 text-center transition-colors",
+              "rounded-2xl px-2 py-2 text-center transition-colors",
               isDragOver
-                ? "border-primary border-dashed bg-primary/5"
-                : "border-border"
+                ? "border-2 border-primary border-dashed bg-primary/5"
+                : ""
             )}
             onDragOver={(e) => {
               if (!e.dataTransfer?.types.includes("Files")) return;
@@ -485,9 +485,10 @@ export default function ImagesLandingPage() {
         </div>
       )}
 
-      {/* Templates header */}
-      <div className="mx-auto w-full max-w-6xl px-6 pt-8">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+      {/* Templates header — mirrors /slides: pills inline with the heading,
+          search drops to a thin utility row below. */}
+      <div className="mx-auto w-full max-w-6xl px-6 pt-10">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold tracking-tight text-foreground">
               Styles
@@ -496,38 +497,38 @@ export default function ImagesLandingPage() {
               Pick a look — the description gets prepended to your prompt.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search styles…"
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {categories.map((c) => (
+              <button
+                key={c}
+                onClick={() => setSelectedCategory(c)}
                 className={cn(
-                  "h-9 w-full rounded-full border border-border bg-card pl-8 pr-3 text-xs",
-                  "outline-none transition placeholder:text-muted-foreground/60",
-                  "focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  "h-7 rounded-full px-3 text-xs font-medium transition",
+                  selectedCategory === c
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
                 )}
-              />
-            </div>
+              >
+                {c}
+              </button>
+            ))}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {categories.map((c) => (
-            <button
-              key={c}
-              onClick={() => setSelectedCategory(c)}
+        <div className="flex items-center justify-between gap-2 border-t border-border/40 pt-3">
+          <div className="relative w-64 max-w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search styles…"
               className={cn(
-                "h-8 rounded-full px-3 text-xs font-medium transition",
-                selectedCategory === c
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                "h-9 w-full rounded-full border border-border bg-card pl-8 pr-3 text-xs",
+                "outline-none transition placeholder:text-muted-foreground/60",
+                "focus:border-primary focus:ring-2 focus:ring-primary/20"
               )}
-            >
-              {c}
-            </button>
-          ))}
+            />
+          </div>
         </div>
       </div>
 
