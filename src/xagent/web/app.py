@@ -27,6 +27,7 @@ from .api.chat import chat_router
 from .api.cloud_storage import cloud_router
 from .api.custom_api import custom_api_router
 from .api.decks import router as decks_router
+from .api.images import router as images_router
 from .api.files import file_router
 from .api.kb import kb_router
 from .api.mcp import mcp_router
@@ -461,6 +462,7 @@ app.include_router(slide_templates_router)
 app.include_router(slide_layouts_router)
 app.include_router(user_slide_templates_router)
 app.include_router(decks_router)
+app.include_router(images_router)
 app.include_router(agents_router)
 app.include_router(workforces_router)
 app.include_router(channel_router, prefix="/api/channels", tags=["Channels"])
