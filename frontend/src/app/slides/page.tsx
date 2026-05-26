@@ -6,11 +6,15 @@ import {
   Search,
   Layers,
   ChevronRight,
+  ChevronLeft,
   Loader2,
   Upload,
   X,
   Trash2,
+  Paperclip,
+  Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 
 import { apiRequest } from "@/lib/api-wrapper";
 import { cn, getApiUrl } from "@/lib/utils";
@@ -42,6 +46,9 @@ export default function SlidesGalleryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [promptText, setPromptText] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [generateNote, setGenerateNote] = useState<string | null>(null);
 
   // Refetch the gallery; used after a successful upload so the new template
   // appears immediately.
@@ -201,33 +208,103 @@ export default function SlidesGalleryPage() {
     });
   }, [templates, selectedCategory, searchQuery]);
 
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedTemplateId) ?? null,
+    [templates, selectedTemplateId]
+  );
+
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-background">
-      {/* Hero */}
-      <div className="w-full border-b border-border/60 bg-background pb-8 pt-10">
-        <div className="mx-auto flex max-w-4xl flex-col items-center px-6 text-center">
-          <h1 className="mb-2 text-3xl font-bold tracking-tight text-foreground">
-            Slide Templates
-          </h1>
-          <p className="mb-6 text-[15px] text-muted-foreground">
-            Browse a curated set of ready-made decks, fill in your content, and
-            export to PowerPoint.
-          </p>
-          <div className="flex w-full max-w-2xl items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* Back-to-home link (matches the PDF) */}
+      <div className="mx-auto w-full max-w-6xl px-6 pt-6">
+        <Link
+          href="/"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" /> Back to home
+        </Link>
+      </div>
+
+      {/* Hero — title + subtitle + generate prompt (PDF: AI Slides landing) */}
+      <div className="w-full bg-background pb-2 pt-8">
+        <div className="mx-auto w-full max-w-3xl px-6">
+          <div className="rounded-2xl border border-border bg-muted/40 px-8 py-10 text-center">
+            <h1 className="mb-2 text-3xl font-bold tracking-tight text-foreground">
+              AI Slides
+            </h1>
+            <p className="mb-6 text-[15px] text-muted-foreground">
+              Generate a polished deck from a single line — every template
+              ships with its own look and feel.
+            </p>
+
+            <div className="relative flex w-full items-center gap-1 rounded-full border border-border bg-card pl-4 pr-1 py-1 shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
               <input
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search templates…"
-                className={cn(
-                  "h-11 w-full rounded-full border border-border bg-card pl-11 pr-4 text-sm",
-                  "outline-none transition placeholder:text-muted-foreground/60",
-                  "focus:border-primary focus:ring-2 focus:ring-primary/20"
-                )}
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                placeholder="What’s the deck about? e.g. Q2 product roadmap for leadership"
+                className="h-10 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && promptText.trim()) {
+                    setGenerateNote(
+                      "AI auto-generate is coming in the next phase. For now, pick a template card below to start a deck."
+                    );
+                  }
+                }}
               />
+              <button
+                type="button"
+                onClick={() =>
+                  setGenerateNote(
+                    "Attaching files to ground the AI is coming with the auto-generate flow. For now, use Upload .pptx below to import a template."
+                  )
+                }
+                title="Attach a file for grounding (coming next)"
+                className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+              <Button
+                size="sm"
+                className="h-9 rounded-full px-4"
+                disabled={!promptText.trim()}
+                onClick={() => {
+                  setGenerateNote(
+                    "AI auto-generate is coming in the next phase. For now, pick a template card below to start a deck."
+                  );
+                }}
+              >
+                <Sparkles className="mr-1 h-3.5 w-3.5" />
+                Generate
+              </Button>
             </div>
+
+            {selectedTemplate && (
+              <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary">
+                <span>Attached:</span>
+                <span className="font-semibold">{selectedTemplate.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTemplateId(null)}
+                  className="rounded-full p-0.5 hover:bg-primary/10"
+                  aria-label="Detach template"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {generateNote && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300/40 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                <span className="flex-1 text-left">{generateNote}</span>
+                <button
+                  onClick={() => setGenerateNote(null)}
+                  className="shrink-0 hover:opacity-70"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
             <input
               ref={fileInputRef}
               type="file"
@@ -238,39 +315,70 @@ export default function SlidesGalleryPage() {
                 if (f) void handleUploadFile(f);
               }}
             />
+            {uploading && (
+              <div className="mt-3 inline-flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Importing your file…
+              </div>
+            )}
+            {uploadError && (
+              <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                <span className="flex-1 text-left">Upload failed: {uploadError}</span>
+                <button
+                  onClick={() => setUploadError(null)}
+                  className="shrink-0 text-destructive hover:opacity-70"
+                  aria-label="Dismiss"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Templates header row — label on the left, category pills on the right */}
+      <div className="mx-auto w-full max-w-6xl px-6 pt-8">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+              Templates
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Pick one to get a head start.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search templates…"
+                className={cn(
+                  "h-9 w-full rounded-full border border-border bg-card pl-8 pr-3 text-xs",
+                  "outline-none transition placeholder:text-muted-foreground/60",
+                  "focus:border-primary focus:ring-2 focus:ring-primary/20"
+                )}
+              />
+            </div>
             <Button
               variant="outline"
               size="sm"
-              className="h-11 shrink-0 rounded-full px-4"
+              className="h-9 shrink-0 rounded-full px-3 text-xs"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              title="Upload a .pptx to convert into a template"
+              title="Import a .pptx as a new template"
             >
               {uploading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Upload className="mr-2 h-4 w-4" />
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
               )}
               {uploading ? "Importing…" : "Upload .pptx"}
             </Button>
           </div>
-          {uploadError && (
-            <div className="mt-3 flex max-w-2xl items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-              <span className="flex-1 text-left">Upload failed: {uploadError}</span>
-              <button
-                onClick={() => setUploadError(null)}
-                className="shrink-0 text-destructive hover:opacity-70"
-                aria-label="Dismiss"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          )}
         </div>
-      </div>
-
-      {/* Category pills */}
-      <div className="mx-auto w-full max-w-6xl px-6 pt-6">
         <div className="flex flex-wrap gap-2">
           {categories.map((c) => (
             <button
@@ -279,7 +387,7 @@ export default function SlidesGalleryPage() {
               className={cn(
                 "h-8 rounded-full px-3 text-xs font-medium transition",
                 selectedCategory === c
-                  ? "bg-primary text-primary-foreground"
+                  ? "bg-foreground text-background"
                   : "bg-muted text-muted-foreground hover:bg-muted/80"
               )}
             >

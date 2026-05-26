@@ -46,6 +46,11 @@ import {
   Search,
   Globe,
   ChevronsUpDown,
+  Wand2,
+  Table,
+  Image as ImageIcon,
+  Microscope,
+  Mic,
 } from "lucide-react"
 import {
   Dialog,
@@ -93,6 +98,8 @@ export interface NavigationItem {
   children?: NavigationItem[]
   showTasks?: boolean
   nameKey?: string
+  /** When true the item renders inert with a "Soon" badge — used for AI widgets not built yet. */
+  disabled?: boolean
 }
 
 export interface NavigationGroup {
@@ -182,11 +189,60 @@ export const getNavigationGroupsForUser = (user: any): NavigationGroup[] => [
         color: "text-purple-400"
       },
       {
-        name: "Slides",
-        nameKey: "nav.slides",
-        href: "/slides",
-        icon: Presentation,
-        color: "text-pink-400"
+        name: "Create with AI",
+        nameKey: "nav.createWithAi",
+        href: "__create_with_ai__",
+        icon: Wand2,
+        color: "text-pink-400",
+        children: [
+          {
+            name: "AI Slides",
+            nameKey: "nav.aiSlides",
+            href: "/slides",
+            icon: Presentation,
+            color: "text-pink-400",
+          },
+          {
+            name: "AI Sheets",
+            nameKey: "nav.aiSheets",
+            href: "#",
+            icon: Table,
+            color: "text-green-400",
+            disabled: true,
+          },
+          {
+            name: "AI Docs",
+            nameKey: "nav.aiDocs",
+            href: "#",
+            icon: FileText,
+            color: "text-blue-400",
+            disabled: true,
+          },
+          {
+            name: "AI Image",
+            nameKey: "nav.aiImage",
+            href: "#",
+            icon: ImageIcon,
+            color: "text-purple-400",
+            disabled: true,
+          },
+          {
+            name: "AI Research",
+            nameKey: "nav.aiResearch",
+            href: "#",
+            icon: Microscope,
+            color: "text-amber-400",
+            disabled: true,
+          },
+          {
+            name: "AI Meeting Notes",
+            nameKey: "nav.aiMeetingNotes",
+            href: "#",
+            icon: Mic,
+            color: "text-rose-400",
+            disabled: true,
+          },
+        ],
       },
     ]
   },
@@ -352,7 +408,10 @@ export function Sidebar({ className, allowCollapse = true }: SidebarProps) {
   }
 
   const [isExpanded, setIsExpanded] = useState(false)
-  const [expandedMenus, setExpandedMenus] = useState<string[]>(["/agent"]) // Use href as a stable key
+  const [expandedMenus, setExpandedMenus] = useState<string[]>([
+    "/agent",
+    "__create_with_ai__", // start expanded so the new AI widgets are discoverable
+  ]) // Use href as a stable key
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isAboutOpen, setIsAboutOpen] = useState(false)
   const sidebarRef = useRef<HTMLDivElement | null>(null)
@@ -879,6 +938,22 @@ export function Sidebar({ className, allowCollapse = true }: SidebarProps) {
                           <div className="ml-4 mt-1 space-y-1 border-l border-border/40 pl-2">
                             {item.children.map((child) => {
                               const isChildActive = pathname === child.href
+                              const childLabel = child.nameKey ? t(child.nameKey) : child.name
+                              if (child.disabled) {
+                                return (
+                                  <div
+                                    key={child.name}
+                                    className="group flex items-center px-4 py-2 text-sm font-medium rounded-lg mx-2 text-muted-foreground/50 cursor-not-allowed select-none"
+                                    title="Coming soon"
+                                  >
+                                    <child.icon className="h-4 w-4 mr-3 text-muted-foreground/50" />
+                                    <span className="flex-1 truncate">{childLabel}</span>
+                                    <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                                      Soon
+                                    </span>
+                                  </div>
+                                )
+                              }
                               return (
                                 <div key={child.href}>
                                   <Link
@@ -891,7 +966,7 @@ export function Sidebar({ className, allowCollapse = true }: SidebarProps) {
                                     )}
                                   >
                                     <child.icon className={cn("h-4 w-4 mr-3", isChildActive ? "text-primary" : child.color || "text-muted-foreground")} />
-                                    {child.nameKey ? t(child.nameKey) : child.name}
+                                    {childLabel}
                                   </Link>
                                 </div>
                               )
