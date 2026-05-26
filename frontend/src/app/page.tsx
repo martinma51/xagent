@@ -21,7 +21,7 @@ import {
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/api-wrapper";
-import { getApiUrl } from "@/lib/utils";
+import { getApiUrl, getUploadApiUrl } from "@/lib/utils";
 import type { Template } from "@/types/template";
 import { useI18n } from "@/contexts/i18n-context";
 import { useApp } from "@/contexts/app-context-chat";
@@ -204,6 +204,37 @@ export default function Home() {
     ];
   };
 
+  // Upload attached files first → returns their file_ids in the same order
+  // (failed uploads drop out). Used to thread the hero-prompt drag-drop
+  // attachments through to the chat task that the prompt creates.
+  const uploadAttachedFilesForTask = async (
+    files: File[]
+  ): Promise<string[]> => {
+    if (files.length === 0) return [];
+    const ids: string[] = [];
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          formData.append("task_type", "task");
+          const res = await apiRequest(
+            `${getUploadApiUrl()}/api/files/upload`,
+            { method: "POST", body: formData }
+          );
+          if (!res.ok) return;
+          const body = await res.json();
+          if (body && typeof body.file_id === "string") {
+            ids.push(body.file_id);
+          }
+        } catch (err) {
+          console.error("Hero upload failed for", file.name, err);
+        }
+      })
+    );
+    return ids;
+  };
+
   const handleCreateTask = async (content: string) => {
     if (isCreating) return;
     setIsCreating(true);
@@ -214,11 +245,15 @@ export default function Home() {
         return;
       }
 
-      const requestBody = {
+      // Upload first so the task description can reference the files.
+      const fileIds = await uploadAttachedFilesForTask(attachedFiles);
+
+      const requestBody: Record<string, unknown> = {
         title: content,
         description: content,
         llm_ids: llmIds,
       };
+      if (fileIds.length > 0) requestBody.files = fileIds;
 
       const taskResponse = await apiRequest(`${getApiUrl()}/api/chat/task/create`, {
         method: "POST",
@@ -237,11 +272,12 @@ export default function Home() {
 
           setPendingMessage({
             message: content,
-            files: [],
+            files: attachedFiles,
             targetTaskId: parsedTaskId
           });
 
           setTaskId(parsedTaskId);
+          setAttachedFiles([]);
         }
       } else {
         console.error("Failed to create task");
