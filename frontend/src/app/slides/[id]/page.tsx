@@ -65,6 +65,7 @@ export default function DeckEditorPage() {
   const [activePageIdx, setActivePageIdx] = useState(0);
   const [previewHtml, setPreviewHtml] = useState<Record<number, string>>({});
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [scale, setScale] = useState(1);
 
   type SaveState = "idle" | "saving" | "saved" | "error";
@@ -232,6 +233,23 @@ export default function DeckEditorPage() {
       controller.abort();
     };
   }, [apiBase, deck, activePageIdx]);
+
+  // Write previewHtml into the iframe via document.open/write rather than
+  // letting srcDoc remount the iframe on every change. srcDoc-replacement
+  // tears the iframe down and re-paints, which shows up as a white flash
+  // on every keystroke; doc.write swaps the document inside the same
+  // iframe element so we still see a brief blank but no border/scale jump
+  // and React doesn't reconcile.
+  const currentHtmlForActive = previewHtml[activePageIdx] ?? "";
+  useEffect(() => {
+    const iframe = previewIframeRef.current;
+    if (!iframe) return;
+    const doc = iframe.contentDocument;
+    if (!doc) return;
+    doc.open();
+    doc.write(currentHtmlForActive || "<!doctype html><html><body></body></html>");
+    doc.close();
+  }, [currentHtmlForActive, activePageIdx]);
 
   // ----- iframe scaling --------------------------------------------------
   useLayoutEffect(() => {
@@ -469,8 +487,6 @@ export default function DeckEditorPage() {
       />
     );
   }
-
-  const currentHtml = previewHtml[activePageIdx];
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -727,30 +743,37 @@ export default function DeckEditorPage() {
                 });
               }}
             >
-              {currentHtml ? (
-                <iframe
-                  title={`Page ${activePageIdx + 1} preview`}
-                  srcDoc={currentHtml}
-                  style={{
-                    width: 1280,
-                    height: 720,
-                    border: 0,
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    transform: `scale(${scale})`,
-                    transformOrigin: "top left",
-                    pointerEvents: "none",
-                  }}
-                />
-              ) : activeLayout ? (
+              {/* Static template thumbnail sits underneath the iframe as a
+                  fallback layer. While the iframe is between doc.write calls
+                  (the brief blank moment on each preview refresh), this image
+                  shows through so the user sees the slide instead of a white
+                  flash. */}
+              {activeLayout && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={`${apiBase}${activeLayout.thumbnail_url}`}
                   alt={`Page ${activePageIdx + 1} preview`}
                   className="absolute inset-0 h-full w-full object-cover"
+                  draggable={false}
                 />
-              ) : (
+              )}
+              <iframe
+                ref={previewIframeRef}
+                title={`Page ${activePageIdx + 1} preview`}
+                style={{
+                  width: 1280,
+                  height: 720,
+                  border: 0,
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  transform: `scale(${scale})`,
+                  transformOrigin: "top left",
+                  pointerEvents: "none",
+                  background: "transparent",
+                }}
+              />
+              {!activeLayout && (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
                   No preview available.
                 </div>
