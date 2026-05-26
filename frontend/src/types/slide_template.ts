@@ -6,6 +6,11 @@ export interface SlotSpec {
   required: boolean;
   max_length?: number | null;
   hint?: string | null;
+  /** Set to "manual" when the slot was drawn on by the user (Phase C'). */
+  origin?: "manual" | string | null;
+  /** Canvas-space rectangle for slots added via drawing mode. */
+  rect?: { x: number; y: number; width: number; height: number } | null;
+  default_text?: string | null;
 }
 
 export interface SlidePageInfo {

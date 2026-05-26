@@ -16,7 +16,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from ...core.tools.core.slides_tool import list_slide_layouts
+from ...core.tools.core.slides_tool import (
+    list_slide_layouts,
+    list_user_slide_templates,
+)
 from ..auth_dependencies import get_current_user
 from ..models.user import User
 
@@ -25,11 +28,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/slide-layouts", tags=["slide-layouts"])
 
 
+class SlotRect(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class SlotSpec(BaseModel):
     type: str = "text"
     required: bool = False
     max_length: Optional[int] = None
     hint: Optional[str] = None
+    # Manual slots (Phase C') carry these so the editor can offer per-slot delete.
+    origin: Optional[str] = None
+    rect: Optional[SlotRect] = None
+    default_text: Optional[str] = None
 
 
 class SlideLayoutInfo(BaseModel):
@@ -41,6 +55,10 @@ class SlideLayoutInfo(BaseModel):
     layout: str = Field(default="", description="Layout name from the template's meta.")
     thumbnail_url: str
     slots: Dict[str, SlotSpec] = Field(default_factory=dict)
+    is_user_uploaded: bool = Field(
+        default=False,
+        description="True for layouts coming from a template the caller uploaded.",
+    )
 
 
 def _thumbnail_url(template_id: str, page_idx: int) -> str:
@@ -58,7 +76,8 @@ async def list_layouts(
     ),
 ) -> List[SlideLayoutInfo]:
     """Return every layout across every template as a flat list."""
-    result = list_slide_layouts(user_id=int(current_user.id))
+    user_id_int = int(current_user.id)
+    result = list_slide_layouts(user_id=user_id_int)
     layouts: List[Dict[str, Any]] = result["layouts"]
     if template_id:
         layouts = [l for l in layouts if l["template_id"] == template_id]
@@ -66,6 +85,10 @@ async def list_layouts(
         layouts = [
             l for l in layouts if l["template_category"].lower() == category.lower()
         ]
+    user_template_ids = {
+        t["id"]
+        for t in list_user_slide_templates(user_id_int)["templates"]
+    }
     return [
         SlideLayoutInfo(
             id=l["id"],
@@ -76,6 +99,7 @@ async def list_layouts(
             layout=l.get("layout", ""),
             thumbnail_url=_thumbnail_url(l["template_id"], l["page_idx"]),
             slots=l.get("slots", {}),
+            is_user_uploaded=l["template_id"] in user_template_ids,
         )
         for l in layouts
     ]

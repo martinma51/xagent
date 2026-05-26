@@ -80,7 +80,32 @@ export default function DeckEditorPage() {
   const [rendering, setRendering] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
 
+  // ----- manual-slot drawing (Phase C') ----------------------------------
+  // Local-only state — never round-trips through the deck save path.
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [dragRect, setDragRect] = useState<
+    | { startX: number; startY: number; endX: number; endY: number }
+    | null
+  >(null);
+  const [pendingSlot, setPendingSlot] = useState<
+    | { x: number; y: number; width: number; height: number; name: string; text: string }
+    | null
+  >(null);
+  const [slotSaving, setSlotSaving] = useState(false);
+  const [slotError, setSlotError] = useState<string | null>(null);
+
   // ----- load deck + layouts --------------------------------------------
+  const refetchLayouts = useCallback(async (): Promise<void> => {
+    try {
+      const res = await apiRequest(`${apiBase}/api/slide-layouts/`);
+      if (!res.ok) return;
+      const data: SlideLayoutInfo[] = await res.json();
+      setLayoutsById(Object.fromEntries(data.map((l) => [l.id, l])));
+    } catch {
+      /* ignore — main load handler shows hard errors */
+    }
+  }, [apiBase]);
+
   useEffect(() => {
     if (!deckIdValid) {
       setLoading(false);
@@ -286,6 +311,98 @@ export default function DeckEditorPage() {
     [mutateDeck]
   );
 
+  // ----- slot CRUD on user-uploaded templates (Phase C') ----------------
+  const saveSlot = useCallback(
+    async (
+      templateId: string,
+      pageIdx: number,
+      rect: { x: number; y: number; width: number; height: number },
+      name: string,
+      defaultText: string
+    ): Promise<boolean> => {
+      setSlotSaving(true);
+      setSlotError(null);
+      try {
+        const res = await apiRequest(
+          `${apiBase}/api/user-slide-templates/${encodeURIComponent(
+            templateId
+          )}/pages/${pageIdx}/slots`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...rect, name, default_text: defaultText }),
+          }
+        );
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            detail = typeof body.detail === "string" ? body.detail : detail;
+          } catch {
+            /* not json */
+          }
+          throw new Error(detail);
+        }
+        await refetchLayouts();
+        // Invalidate cached previews so the new overlay shows up.
+        setPreviewHtml({});
+        return true;
+      } catch (err) {
+        setSlotError(err instanceof Error ? err.message : String(err));
+        return false;
+      } finally {
+        setSlotSaving(false);
+      }
+    },
+    [apiBase, refetchLayouts]
+  );
+
+  const deleteSlot = useCallback(
+    async (templateId: string, pageIdx: number, slotName: string): Promise<void> => {
+      const ok = window.confirm(
+        `Delete slot "${slotName}"? The text box is removed from this layout for every deck using it.`
+      );
+      if (!ok) return;
+      setSlotSaving(true);
+      setSlotError(null);
+      try {
+        const res = await apiRequest(
+          `${apiBase}/api/user-slide-templates/${encodeURIComponent(
+            templateId
+          )}/pages/${pageIdx}/slots/${encodeURIComponent(slotName)}`,
+          { method: "DELETE" }
+        );
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            detail = typeof body.detail === "string" ? body.detail : detail;
+          } catch {
+            /* not json */
+          }
+          throw new Error(detail);
+        }
+        await refetchLayouts();
+        setPreviewHtml({});
+        // Clear any value the user typed for this slot so it doesn't linger.
+        mutateDeck((prev) => {
+          const pages = prev.pages.slice();
+          const page = pages[activePageIdx];
+          if (page) {
+            const { [slotName]: _drop, ...rest } = page.slot_values;
+            pages[activePageIdx] = { ...page, slot_values: rest };
+          }
+          return { ...prev, pages };
+        });
+      } catch (err) {
+        setSlotError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setSlotSaving(false);
+      }
+    },
+    [apiBase, activePageIdx, mutateDeck, refetchLayouts]
+  );
+
   // ----- download pptx ---------------------------------------------------
   const handleDownload = useCallback(async () => {
     if (!deck) return;
@@ -481,6 +598,41 @@ export default function DeckEditorPage() {
                 </span>
               )}
             </div>
+            {activeLayout?.is_user_uploaded && (
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={drawingMode ? "default" : "outline"}
+                  className="h-7 px-2 text-xs"
+                  onClick={() => {
+                    setDrawingMode((d) => !d);
+                    setDragRect(null);
+                    setPendingSlot(null);
+                    setSlotError(null);
+                  }}
+                >
+                  {drawingMode ? (
+                    <>
+                      <X className="mr-1 h-3 w-3" /> Exit draw mode
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-1 h-3 w-3" /> Add text box
+                    </>
+                  )}
+                </Button>
+                <span className="text-[11px] text-muted-foreground/70">
+                  {drawingMode
+                    ? "Drag on the preview to draw a slot."
+                    : "Draw new editable text boxes on the slide."}
+                </span>
+              </div>
+            )}
+            {slotError && (
+              <div className="mt-2 rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1 text-[11px] text-destructive">
+                {slotError}
+              </div>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto px-5 py-4">
             {!activeLayout ? (
@@ -490,7 +642,9 @@ export default function DeckEditorPage() {
               </p>
             ) : Object.keys(activeLayout.slots).length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                This layout has no editable fields.
+                {activeLayout.is_user_uploaded
+                  ? "No editable fields yet — click \"Add text box\" above and drag on the preview."
+                  : "This layout has no editable fields."}
               </p>
             ) : (
               <div className="space-y-4">
@@ -506,6 +660,17 @@ export default function DeckEditorPage() {
                       onChange={(v) =>
                         updateSlot(activePageIdx, slotName, v)
                       }
+                      onDelete={
+                        spec.origin === "manual" && activeLayout.is_user_uploaded
+                          ? () =>
+                              void deleteSlot(
+                                activeLayout.template_id,
+                                activeLayout.page_idx,
+                                slotName
+                              )
+                          : undefined
+                      }
+                      deleting={slotSaving}
                     />
                   )
                 )}
@@ -519,7 +684,48 @@ export default function DeckEditorPage() {
           <div className="flex flex-1 items-center justify-center p-8">
             <div
               ref={containerRef}
-              className="relative aspect-[16/9] w-full max-w-[1024px] overflow-hidden rounded-lg border border-border/60 bg-black shadow-sm"
+              className={cn(
+                "relative aspect-[16/9] w-full max-w-[1024px] overflow-hidden rounded-lg border border-border/60 bg-black shadow-sm",
+                drawingMode && "cursor-crosshair border-primary"
+              )}
+              onMouseDown={(e) => {
+                if (!drawingMode || pendingSlot) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                setDragRect({ startX: x, startY: y, endX: x, endY: y });
+              }}
+              onMouseMove={(e) => {
+                if (!dragRect) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                setDragRect({
+                  ...dragRect,
+                  endX: Math.max(0, Math.min(rect.width, e.clientX - rect.left)),
+                  endY: Math.max(0, Math.min(rect.height, e.clientY - rect.top)),
+                });
+              }}
+              onMouseUp={(e) => {
+                if (!dragRect || !activeLayout) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const endX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                const endY = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+                const screenX = Math.min(dragRect.startX, endX);
+                const screenY = Math.min(dragRect.startY, endY);
+                const screenW = Math.abs(endX - dragRect.startX);
+                const screenH = Math.abs(endY - dragRect.startY);
+                setDragRect(null);
+                if (screenW < 10 || screenH < 10) return; // ignore micro-drags
+                // Convert preview-space → 1280×720 canvas coords using `scale`.
+                const s = scale || 1;
+                setPendingSlot({
+                  x: Math.round(screenX / s),
+                  y: Math.round(screenY / s),
+                  width: Math.round(screenW / s),
+                  height: Math.round(screenH / s),
+                  name: `slot_${Object.keys(activeLayout.slots).length + 1}`,
+                  text: "Text",
+                });
+              }}
             >
               {currentHtml ? (
                 <iframe
@@ -548,6 +754,51 @@ export default function DeckEditorPage() {
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
                   No preview available.
                 </div>
+              )}
+
+              {/* Live rectangle while dragging */}
+              {dragRect && (
+                <div
+                  className="pointer-events-none absolute border-2 border-primary bg-primary/15"
+                  style={{
+                    left: Math.min(dragRect.startX, dragRect.endX),
+                    top: Math.min(dragRect.startY, dragRect.endY),
+                    width: Math.abs(dragRect.endX - dragRect.startX),
+                    height: Math.abs(dragRect.endY - dragRect.startY),
+                  }}
+                />
+              )}
+
+              {/* Inline form on top of finalised rectangle */}
+              {pendingSlot && activeLayout && (
+                <PendingSlotForm
+                  slot={pendingSlot}
+                  scale={scale}
+                  saving={slotSaving}
+                  onChange={(patch) => setPendingSlot({ ...pendingSlot, ...patch })}
+                  onCancel={() => {
+                    setPendingSlot(null);
+                    setSlotError(null);
+                  }}
+                  onSave={async () => {
+                    const ok = await saveSlot(
+                      activeLayout.template_id,
+                      activeLayout.page_idx,
+                      {
+                        x: pendingSlot.x,
+                        y: pendingSlot.y,
+                        width: pendingSlot.width,
+                        height: pendingSlot.height,
+                      },
+                      pendingSlot.name,
+                      pendingSlot.text
+                    );
+                    if (ok) {
+                      setPendingSlot(null);
+                      setDrawingMode(false);
+                    }
+                  }}
+                />
               )}
             </div>
           </div>
@@ -740,11 +991,15 @@ function SlotField({
   spec,
   value,
   onChange,
+  onDelete,
+  deleting,
 }: {
   name: string;
   spec: SlotSpec;
   value: string;
   onChange: (v: string) => void;
+  onDelete?: () => void;
+  deleting?: boolean;
 }) {
   const isLong = (spec.max_length ?? 0) > 80;
   return (
@@ -752,10 +1007,27 @@ function SlotField({
       <span className="mb-1 flex items-center gap-1 text-xs font-medium text-foreground">
         {name}
         {spec.required && <span className="text-destructive">*</span>}
+        {spec.origin === "manual" && (
+          <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] uppercase tracking-wide text-primary">
+            manual
+          </span>
+        )}
         {spec.max_length && (
           <span className="ml-auto text-muted-foreground/70">
             {value.length}/{spec.max_length}
           </span>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="ml-1 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/15 hover:text-destructive disabled:opacity-50"
+            title={`Delete slot "${name}"`}
+            aria-label={`Delete slot ${name}`}
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
         )}
       </span>
       {isLong ? (
@@ -789,6 +1061,103 @@ function SlotField({
         </span>
       )}
     </label>
+  );
+}
+
+function PendingSlotForm({
+  slot,
+  scale,
+  saving,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  slot: { x: number; y: number; width: number; height: number; name: string; text: string };
+  scale: number;
+  saving: boolean;
+  onChange: (patch: Partial<typeof slot>) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  // Position the form right under the drawn rectangle when there's room,
+  // otherwise float it above so it doesn't get clipped by the container's
+  // overflow-hidden. Math is all in preview-space (post-scale).
+  const previewX = slot.x * scale;
+  const previewY = slot.y * scale;
+  const previewW = slot.width * scale;
+  const previewH = slot.height * scale;
+  const FORM_H = 220; // rough — input + textarea + buttons
+  const containerH = 720 * scale;
+  const flipAbove = previewY + previewH + FORM_H > containerH;
+  const formTop = flipAbove
+    ? Math.max(8, previewY - FORM_H - 6)
+    : previewY + previewH + 6;
+  return (
+    <>
+      {/* The frozen rectangle outline */}
+      <div
+        className="pointer-events-none absolute border-2 border-primary"
+        style={{ left: previewX, top: previewY, width: previewW, height: previewH }}
+      />
+      <div
+        className="absolute z-10 w-[260px] rounded-md border border-border bg-background p-3 shadow-lg"
+        style={{ left: Math.max(8, previewX), top: formTop }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="mb-2 text-[11px] text-muted-foreground">
+          {slot.width}×{slot.height} px · at ({slot.x}, {slot.y})
+        </div>
+        <label className="mb-2 block">
+          <span className="mb-1 block text-[11px] font-medium text-foreground">
+            Slot name
+          </span>
+          <input
+            type="text"
+            value={slot.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="title"
+            className="w-full rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            autoFocus
+          />
+        </label>
+        <label className="mb-2 block">
+          <span className="mb-1 block text-[11px] font-medium text-foreground">
+            Default text
+          </span>
+          <textarea
+            value={slot.text}
+            onChange={(e) => onChange({ text: e.target.value })}
+            rows={2}
+            className="w-full resize-none rounded border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={onSave}
+            disabled={saving || !slot.name.trim()}
+          >
+            {saving ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <Check className="mr-1 h-3 w-3" />
+            )}
+            Save
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }
 

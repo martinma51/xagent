@@ -13,6 +13,8 @@ export interface SlideLayoutInfo {
   layout: string;
   thumbnail_url: string;
   slots: Record<string, SlotSpec>;
+  /** True when this layout came from a template the current user uploaded. */
+  is_user_uploaded?: boolean;
 }
 
 /** One page of a deck: a layout reference + the user's filled slot values. */
