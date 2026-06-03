@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { useRouter, useSearchParams } from "next/navigation"
 import { KnowledgeBaseCreationDialog } from "@/components/kb/knowledge-base-creation-dialog"
-import { toast } from "sonner"
+import { toast } from "@/components/ui/sonner"
 import { cn } from "@/lib/utils"
 import { getBrandingFromEnv } from "@/lib/branding"
 import { BuildFilePreviewSheet } from "./build-file-preview-sheet"
@@ -358,6 +358,10 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
     setTaskId(null, { navigate: false })
   }, [closeFilePreview, dispatch, setTaskId])
 
+  const invalidatePreviewTask = useCallback(() => {
+    previewTaskIdRef.current = null
+  }, [])
+
   useEffect(() => {
     resetPreviewSession()
     return () => {
@@ -369,8 +373,8 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
     if (!previewTaskIdRef.current) {
       return
     }
-    resetPreviewSession()
-  }, [instructions, executionMode, selectedKbs, selectedSkills, selectedToolCategories, selectedMcpServers, modelConfig, resetPreviewSession])
+    invalidatePreviewTask()
+  }, [instructions, executionMode, selectedKbs, selectedSkills, selectedToolCategories, selectedMcpServers, modelConfig, invalidatePreviewTask])
 
   // Fetch Data
   useEffect(() => {
@@ -731,6 +735,8 @@ export function AgentBuilder({ agentId }: AgentBuilderProps) {
         }
         previewTaskIdRef.current = previewTaskId
 
+        // Close any file preview opened from the previous preview task before switching context.
+        closeFilePreview()
         setTaskId(previewTaskId, { navigate: false })
         dispatch({
           type: "SET_CURRENT_TASK",

@@ -108,15 +108,22 @@ function InlineOfficeContent({
   kind,
   previewUrl,
   loadErrorText,
+  fileId,
 }: {
   kind: 'presentation' | 'document' | 'spreadsheet'
   previewUrl: string
   loadErrorText: string
+  /** Optional fileId; when set, enables server-side PDF preview for .pptx. */
+  fileId?: string
 }) {
   const [base64Content, setBase64Content] = useState('')
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    // Presentation + fileId: skip the eager bytes download. Hooks must be
+    // called unconditionally, so we guard here rather than relying on the
+    // early render return below.  PptxPreviewRenderer lazy-fetches if needed.
+    if (kind === 'presentation' && fileId) return
     if (!previewUrl) return
 
     let isCancelled = false
@@ -153,6 +160,16 @@ function InlineOfficeContent({
     }
   }, [previewUrl])
 
+  // Fast path: presentation with a managed fileId — skip the eager PPTX
+  // download and mount the renderer immediately.  PptxPreviewRenderer will
+  // probe the LibreOffice PDF endpoint first; only if that 503s does it
+  // lazy-fetch the raw bytes from /api/files/public/preview/{fileId}.  For
+  // large decks this means the PDF iframe can appear without ever paying the
+  // base64 download + memory cost.  Per PR #542 review (rogercloud).
+  if (kind === 'presentation' && fileId) {
+    return <PptxPreviewRenderer fileId={fileId} />
+  }
+
   if (error) {
     return <div className="p-3 text-xs text-muted-foreground">{loadErrorText}</div>
   }
@@ -165,10 +182,8 @@ function InlineOfficeContent({
     )
   }
 
-  // Presentation now goes through PptxPreviewRenderer (canvas-based,
-  // pptxviewjs) instead of an iframe — browsers can't render raw .pptx
-  // bytes in an iframe, and the backend's /api/files/public/preview
-  // endpoint now returns those raw bytes (rogercloud review on #465).
+  // Presentation without a managed fileId (external previewUrl path) falls
+  // through here with pre-loaded bytes.
   if (kind === 'presentation') {
     return <PptxPreviewRenderer base64Content={base64Content} />
   }
@@ -300,6 +315,7 @@ export function InlineFilePreview({
           kind={kind}
           previewUrl={previewUrl}
           loadErrorText={loadErrorText}
+          fileId={source.fileId}
         />
       </div>
     </div>

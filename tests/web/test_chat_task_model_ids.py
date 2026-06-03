@@ -3,6 +3,7 @@
 import logging
 import os
 import tempfile
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,9 +12,14 @@ from fastapi.testclient import TestClient
 
 from xagent.core.model.chat.basic.base import BaseLLM
 from xagent.web.api.auth import auth_router
-from xagent.web.api.chat import AgentServiceManager, chat_router
+from xagent.web.api.chat import (
+    AgentServiceManager,
+    _load_agent_for_task_runtime,
+    chat_router,
+)
 from xagent.web.api.model import model_router
 from xagent.web.models.database import Base, get_db, get_engine
+from xagent.web.services.workforce_access import WorkforcePolicy, set_workforce_policy
 
 
 def override_get_db():
@@ -42,7 +48,12 @@ def ensure_system_initialized() -> None:
 
     if status_data.get("needs_setup", True):
         setup_response = client.post(
-            "/api/auth/setup-admin", json={"username": "admin", "password": "admin123"}
+            "/api/auth/setup-admin",
+            json={
+                "username": "admin",
+                "email": "admin@example.com",
+                "password": "admin123",
+            },
         )
         assert setup_response.status_code == 200
         assert setup_response.json().get("success") is True
@@ -70,11 +81,23 @@ def test_db():
         pass
 
 
+@pytest.fixture(autouse=True)
+def reset_workforce_policy():
+    set_workforce_policy(WorkforcePolicy())
+    yield
+    set_workforce_policy(WorkforcePolicy())
+
+
 @pytest.fixture(scope="function")
 def user1_headers(test_db):
     ensure_system_initialized()
     response = client.post(
-        "/api/auth/register", json={"username": "user1", "password": "password123"}
+        "/api/auth/register",
+        json={
+            "username": "user1",
+            "email": "user1@example.com",
+            "password": "password123",
+        },
     )
     assert response.status_code == 200
 
@@ -90,7 +113,12 @@ def user1_headers(test_db):
 def user2_headers(test_db):
     ensure_system_initialized()
     response = client.post(
-        "/api/auth/register", json={"username": "user2", "password": "password123"}
+        "/api/auth/register",
+        json={
+            "username": "user2",
+            "email": "user2@example.com",
+            "password": "password123",
+        },
     )
     assert response.status_code == 200
 
@@ -176,34 +204,53 @@ def test_runtime_config_preserves_task_llm_when_agent_model_is_unavailable():
         user_id=71,
     )
     user = MagicMock(id=71)
-    agent = MagicMock(id=9, name="Published Agent", execution_mode="balanced")
+    from xagent.web.models.agent import AgentStatus
+
+    agent = MagicMock(
+        id=9,
+        user_id=71,
+        name="Published Agent",
+        execution_mode="balanced",
+        status=AgentStatus.PUBLISHED,
+    )
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = agent
-    manager._get_task_llm_ids = MagicMock(
-        return_value=["qwen3.6-plus", None, None, None]
-    )
-    manager._load_agent_builder_config = MagicMock(
-        return_value={
-            "llms": (None, None, None, None),
-            "saved_model_ids": {"general": 123},
-            "saved_model_descriptors": {
-                "general": {
-                    "pk": 123,
-                    "model_id": "glm4.6v",
-                    "model_name": "glm4.6v",
-                }
-            },
-            "execution_mode": "balanced",
-            "instructions": "",
-            "skills": [],
-            "knowledge_bases": [],
-            "tool_categories": [],
-        }
-    )
 
-    with patch(
-        "xagent.web.api.chat.resolve_llms_from_names",
-        return_value=(task_llm, None, None, None),
+    fake_agent_builder_config = {
+        "llms": (None, None, None, None),
+        "saved_model_ids": {"general": 123},
+        "saved_model_descriptors": {
+            "general": {
+                "pk": 123,
+                "model_id": "glm4.6v",
+                "model_name": "glm4.6v",
+            }
+        },
+        "execution_mode": "balanced",
+        "instructions": "",
+        "skills": [],
+        "knowledge_bases": [],
+        "tool_categories": [],
+    }
+
+    # LLM resolution + agent-builder config loading moved to module-
+    # level ``resolve_task_runtime_config_core`` (called by both the
+    # instance method here and ``load_task_setup_snapshot_sync``);
+    # patch the helpers it actually invokes.
+    with (
+        patch(
+            "xagent.web.services.llm_utils.load_agent_builder_config",
+            return_value=fake_agent_builder_config,
+        ) as load_cfg_mock,
+        patch(
+            "xagent.web.services.llm_utils.UserAwareModelStorage."
+            "resolve_llms_from_names",
+            return_value=(task_llm, None, None, None),
+        ),
+        patch(
+            "xagent.web.services.llm_utils.make_normalize_model_id",
+            return_value=lambda mid, mname: mname,
+        ),
     ):
         runtime_config = manager._resolve_task_runtime_config(
             task_id=42,
@@ -213,7 +260,7 @@ def test_runtime_config_preserves_task_llm_when_agent_model_is_unavailable():
         )
 
     assert runtime_config["task_llm"] is task_llm
-    manager._load_agent_builder_config.assert_called_once_with(agent, db, 71)
+    load_cfg_mock.assert_called_once_with(agent, db, 71)
 
 
 def test_runtime_config_uses_accessible_agent_model_over_task_baseline():
@@ -230,28 +277,41 @@ def test_runtime_config_uses_accessible_agent_model_over_task_baseline():
     )
     user = MagicMock(id=71)
     db = MagicMock()
+    from xagent.web.models.agent import AgentStatus
+
     db.query.return_value.filter.return_value.first.return_value = MagicMock(
-        id=9, name="Published Agent", execution_mode="balanced"
-    )
-    manager._get_task_llm_ids = MagicMock(
-        return_value=["qwen3.6-plus", None, None, None]
-    )
-    manager._load_agent_builder_config = MagicMock(
-        return_value={
-            "llms": (agent_llm, None, None, None),
-            "saved_model_ids": {"general": 123},
-            "saved_model_descriptors": {},
-            "execution_mode": "balanced",
-            "instructions": "",
-            "skills": [],
-            "knowledge_bases": [],
-            "tool_categories": [],
-        }
+        id=9,
+        user_id=71,
+        name="Published Agent",
+        execution_mode="balanced",
+        status=AgentStatus.PUBLISHED,
     )
 
-    with patch(
-        "xagent.web.api.chat.resolve_llms_from_names",
-        return_value=(task_llm, None, None, None),
+    fake_agent_builder_config = {
+        "llms": (agent_llm, None, None, None),
+        "saved_model_ids": {"general": 123},
+        "saved_model_descriptors": {},
+        "execution_mode": "balanced",
+        "instructions": "",
+        "skills": [],
+        "knowledge_bases": [],
+        "tool_categories": [],
+    }
+
+    with (
+        patch(
+            "xagent.web.services.llm_utils.load_agent_builder_config",
+            return_value=fake_agent_builder_config,
+        ),
+        patch(
+            "xagent.web.services.llm_utils.UserAwareModelStorage."
+            "resolve_llms_from_names",
+            return_value=(task_llm, None, None, None),
+        ),
+        patch(
+            "xagent.web.services.llm_utils.make_normalize_model_id",
+            return_value=lambda mid, mname: mname,
+        ),
     ):
         runtime_config = manager._resolve_task_runtime_config(
             task_id=42,
@@ -703,5 +763,256 @@ def test_task_create_rejects_agent_id_from_another_user(
 
         assert resp.status_code == 404
         assert resp.json()["detail"] == "Agent not found or access denied"
+    finally:
+        db.close()
+
+
+def test_task_create_rejects_generated_workforce_manager_agent(
+    test_db,
+    user1_headers,
+):
+    from xagent.web.models.agent import Agent, AgentOrigin, AgentStatus
+    from xagent.web.models.database import get_db
+    from xagent.web.models.task import Task, TaskStatus
+    from xagent.web.models.user import User
+
+    db = next(get_db())
+    try:
+        user1 = db.query(User).filter(User.username == "user1").first()
+        assert user1 is not None
+
+        agent = Agent(
+            user_id=user1.id,
+            name="generated-workforce-manager",
+            description="private manager",
+            status=AgentStatus.PUBLISHED,
+            origin=AgentOrigin.WORKFORCE_GENERATED_MANAGER.value,
+        )
+        db.add(agent)
+        db.commit()
+        db.refresh(agent)
+
+        resp = client.post(
+            "/api/chat/task/create",
+            json={
+                "title": "generated-manager-task",
+                "description": "desc",
+                "agent_id": agent.id,
+            },
+            headers=user1_headers,
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Agent not found or access denied"
+
+        task = Task(
+            user_id=user1.id,
+            title="legacy generated manager task",
+            description="legacy",
+            status=TaskStatus.PENDING,
+            agent_id=agent.id,
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+
+        assert _load_agent_for_task_runtime(db, task) is None
+    finally:
+        db.close()
+
+
+def test_task_create_allows_policy_visible_published_agent(
+    test_db, user1_headers, user2_headers
+):
+    from xagent.web.models.agent import Agent, AgentStatus
+    from xagent.web.models.database import get_db
+    from xagent.web.models.task import Task
+    from xagent.web.models.user import User
+
+    class VisibleAgentPolicy(WorkforcePolicy):
+        def __init__(self, visible_agent_ids: set[int]) -> None:
+            self.visible_agent_ids = visible_agent_ids
+
+        def get_visible_agent_ids(self, db, user, purpose: str) -> set[int] | None:
+            del db, user
+            return self.visible_agent_ids if purpose == "agent_list" else None
+
+    db = next(get_db())
+    try:
+        user2 = db.query(User).filter(User.username == "user2").first()
+        assert user2 is not None
+
+        shared_agent = Agent(
+            user_id=user2.id,
+            name="user2-shared-agent",
+            description="shared",
+            instructions="Use shared instructions.",
+            execution_mode="think",
+            status=AgentStatus.PUBLISHED,
+        )
+        db.add(shared_agent)
+        db.commit()
+        db.refresh(shared_agent)
+
+        set_workforce_policy(VisibleAgentPolicy({int(shared_agent.id)}))
+
+        resp = client.post(
+            "/api/chat/task/create",
+            json={
+                "title": "shared-agent-task",
+                "description": "desc",
+                "agent_id": shared_agent.id,
+            },
+            headers=user1_headers,
+        )
+
+        assert resp.status_code == 200, resp.text
+        task = db.query(Task).filter(Task.id == resp.json()["task_id"]).one()
+        assert int(task.agent_id) == int(shared_agent.id)
+        assert _load_agent_for_task_runtime(db, task) == shared_agent
+
+        from xagent.web.services.task_setup_snapshot import (
+            load_task_setup_snapshot_sync,
+        )
+
+        snapshot = load_task_setup_snapshot_sync(
+            int(task.id),
+            user_id=int(task.user_id),
+        )
+        assert snapshot is not None
+        assert snapshot.agent is not None
+        assert snapshot.agent.id == int(shared_agent.id)
+        assert snapshot.excluded_agent_id == int(shared_agent.id)
+    finally:
+        db.close()
+
+
+def test_delete_task_removes_trace_blobs_and_task_owned_rows(test_db, user1_headers):
+    from xagent.web.models.chat_message import TaskChatMessage
+    from xagent.web.models.database import get_db
+    from xagent.web.models.task import (
+        DAGExecution,
+        DAGExecutionPhase,
+        Task,
+        TaskStatus,
+        TraceCheckpointBlob,
+        TraceEvent,
+        TraceMessageBlob,
+    )
+    from xagent.web.models.uploaded_file import UploadedFile
+    from xagent.web.models.user import User
+
+    db = next(get_db())
+    try:
+        user = db.query(User).filter(User.username == "user1").first()
+        assert user is not None
+
+        task = Task(
+            user_id=user.id,
+            title="delete me",
+            description="task with task-owned rows",
+            status=TaskStatus.COMPLETED,
+        )
+        db.add(task)
+        db.flush()
+
+        db.add_all(
+            [
+                DAGExecution(
+                    task_id=task.id,
+                    phase=DAGExecutionPhase.COMPLETED,
+                ),
+                TraceEvent(
+                    task_id=task.id,
+                    build_id=None,
+                    event_id="vibe-event",
+                    event_type="dag_execute_end",
+                    timestamp=datetime.now(timezone.utc),
+                    data={"ok": True},
+                ),
+                TraceEvent(
+                    task_id=task.id,
+                    build_id="builder-session",
+                    event_id="build-event",
+                    event_type="agent_message",
+                    timestamp=datetime.now(timezone.utc),
+                    data={"ok": True},
+                ),
+                TraceMessageBlob(
+                    task_id=task.id,
+                    execution_id="exec-delete",
+                    message_hash="message-hash",
+                    message_data={"role": "user", "content": "hello"},
+                    message_bytes=42,
+                ),
+                TraceCheckpointBlob(
+                    task_id=task.id,
+                    execution_id="exec-delete",
+                    blob_kind="messages",
+                    blob_hash="checkpoint-hash",
+                    blob_data={"messages": []},
+                    blob_bytes=17,
+                ),
+                TaskChatMessage(
+                    task_id=task.id,
+                    user_id=user.id,
+                    role="user",
+                    content="hello",
+                    message_type="user_message",
+                ),
+                UploadedFile(
+                    user_id=user.id,
+                    task_id=task.id,
+                    filename="input.txt",
+                    storage_path=f"/tmp/task-{task.id}/input.txt",
+                    file_size=5,
+                ),
+            ]
+        )
+        db.commit()
+        task_id = int(task.id)
+    finally:
+        db.close()
+
+    resp = client.delete(f"/api/chat/task/{task_id}", headers=user1_headers)
+
+    assert resp.status_code == 200, resp.text
+    db = next(get_db())
+    try:
+        assert db.query(Task).filter(Task.id == task_id).count() == 0
+        assert db.query(TraceMessageBlob).filter_by(task_id=task_id).count() == 0
+        assert db.query(TraceCheckpointBlob).filter_by(task_id=task_id).count() == 0
+        assert db.query(TraceEvent).filter_by(task_id=task_id).count() == 0
+        assert db.query(DAGExecution).filter_by(task_id=task_id).count() == 0
+        assert db.query(TaskChatMessage).filter_by(task_id=task_id).count() == 0
+        assert db.query(UploadedFile).filter_by(task_id=task_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_delete_task_keeps_cross_user_access_denied(
+    test_db, user1_headers, user2_headers
+):
+    from xagent.web.models.database import get_db
+    from xagent.web.models.task import Task
+    from xagent.web.models.user import User
+
+    db = next(get_db())
+    try:
+        user2 = db.query(User).filter(User.username == "user2").first()
+        assert user2 is not None
+        task = Task(user_id=user2.id, title="private", description="private")
+        db.add(task)
+        db.commit()
+        task_id = int(task.id)
+    finally:
+        db.close()
+
+    resp = client.delete(f"/api/chat/task/{task_id}", headers=user1_headers)
+
+    assert resp.status_code == 404
+    db = next(get_db())
+    try:
+        assert db.query(Task).filter(Task.id == task_id).count() == 1
     finally:
         db.close()

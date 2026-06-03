@@ -107,9 +107,22 @@ from ..config import (
     is_allowed_file,
     sanitize_path_component,
 )
+from ..models.background_job import (
+    BackgroundJob,
+    BackgroundJobStatus,
+    BackgroundJobType,
+)
 from ..models.database import get_db, get_session_local
 from ..models.uploaded_file import UploadedFile
 from ..models.user import User
+from ..schemas.background_job import BackgroundJobResponse
+from ..services.background_jobs import (
+    QUEUE_DEFAULT,
+    create_background_job,
+    get_non_terminal_background_job_by_idempotency_key,
+    is_background_job_enqueue_available,
+    mark_job_failed,
+)
 from ..services.kb_collection_service import (
     delete_collection_physical_dir,
     delete_collection_uploaded_files,
@@ -118,6 +131,12 @@ from ..services.kb_collection_service import (
 )
 from ..services.kb_file_service import (
     build_uploaded_filename_map as _build_uploaded_filename_map,
+)
+from ..services.kb_file_service import (
+    capture_uploaded_file_refresh_snapshot as _capture_uploaded_file_refresh_snapshot,
+)
+from ..services.kb_file_service import (
+    compensate_new_uploaded_file as _compensate_new_uploaded_file,
 )
 from ..services.kb_file_service import (
     delete_uploaded_file_if_orphaned as _delete_uploaded_file_if_orphaned,
@@ -132,7 +151,16 @@ from ..services.kb_file_service import (
     resolve_document_filename as _resolve_document_filename,
 )
 from ..services.kb_file_service import (
+    restore_uploaded_file_refresh_snapshot as _restore_uploaded_file_refresh_snapshot,
+)
+from ..services.kb_file_service import (
     upsert_uploaded_file_record as _upsert_uploaded_file_record,
+)
+from ..services.kb_ingest_targets import (
+    admit_kb_ingest_target,
+    release_kb_ingest_target_generation,
+    tombstone_kb_ingest_target,
+    tombstone_kb_ingest_targets_for_collection,
 )
 from ..services.managed_file_ref import DurableObjectMissingError, ManagedFileRef
 from ..services.uploaded_file_store import UploadedFileStore
@@ -156,6 +184,13 @@ _MAX_FILESYSTEM_FILENAME_BYTES = 255
 _MAX_WEB_TITLE_FILENAME_BYTES = _MAX_FILESYSTEM_FILENAME_BYTES - len(
     f"{'0' * _WEB_FILENAME_HASH_LENGTH}_{_WEB_FILENAME_SUFFIX}".encode("utf-8")
 )
+_BACKGROUND_INGEST_STAGING_DIR = ".background-ingest"
+
+
+@dataclass(frozen=True)
+class UploadCopyResult:
+    total_size: int
+    sha256: str
 
 
 def _like_contains_pattern(value: str) -> str:
@@ -203,6 +238,22 @@ def _normalize_web_title_for_filename(title: str) -> str:
         trimmed = trimmed[:-1]
     trimmed = trimmed.rstrip("._-")
     return trimmed or "untitled"
+
+
+def _truncate_utf8_bytes(value: str, max_bytes: int) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _build_ingest_backup_path(file_path: Path) -> Path:
+    suffix = f".rollback-{uuid.uuid4().hex}"
+    max_name_bytes = _MAX_FILESYSTEM_FILENAME_BYTES - len(suffix.encode("utf-8"))
+    truncated_name = _truncate_utf8_bytes(file_path.name, max_name_bytes).rstrip(" ._-")
+    if not truncated_name:
+        truncated_name = hashlib.sha256(file_path.name.encode("utf-8")).hexdigest()[:16]
+    return file_path.with_name(f"{truncated_name}{suffix}")
 
 
 def _validate_parser_for_file(
@@ -769,6 +820,133 @@ def _get_file_sha256(file_path: Path) -> str:
     return hash_obj.hexdigest()
 
 
+def _background_job_idempotency_key(namespace: str, payload: Dict[str, Any]) -> str:
+    """Build a bounded idempotency key from stable request payload fields."""
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return f"{namespace}:{digest}"
+
+
+def _copy_upload_file_to_path(
+    file: UploadFile,
+    file_path: Path,
+    *,
+    max_size: int | None = None,
+) -> UploadCopyResult:
+    effective_max_size = MAX_FILE_SIZE if max_size is None else max_size
+    total_size = 0
+    hash_obj = hashlib.sha256()
+    file_read_buffer_size = 1024 * 1024
+    file.file.seek(0)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(file_path, "wb") as buffer:
+        while True:
+            chunk = file.file.read(file_read_buffer_size)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > effective_max_size:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File size exceeds maximum limit of {MAX_FILE_SIZE_LABEL}",
+                )
+            hash_obj.update(chunk)
+            buffer.write(chunk)
+    return UploadCopyResult(total_size=total_size, sha256=hash_obj.hexdigest())
+
+
+def _build_background_ingest_staging_path(*, user_id: int, filename: str) -> Path:
+    user_root = get_upload_path(
+        _BACKGROUND_INGEST_STAGING_DIR,
+        user_id=user_id,
+        create_if_not_exists=True,
+    ).parent
+    staging_dir = user_root / _BACKGROUND_INGEST_STAGING_DIR / uuid.uuid4().hex
+    staging_dir.mkdir(parents=True, exist_ok=False)
+    return staging_dir / Path(filename).name
+
+
+def _background_ingest_file_id(*, user_id: int, storage_path: Path) -> str:
+    stable_key = f"xagent-kb-ingest:{user_id}:{storage_path}"
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, stable_key))
+
+
+def _cleanup_background_ingest_staging_file(staging_path: Path | str | None) -> None:
+    if not staging_path:
+        return
+    path = Path(str(staging_path))
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        logger.warning("Failed to remove background ingest staging file %s", path)
+        return
+    try:
+        path.parent.rmdir()
+    except OSError:
+        pass
+
+
+async def _ensure_background_job_queue_available_async() -> None:
+    if not await asyncio.to_thread(
+        is_background_job_enqueue_available,
+        check_worker=True,
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="Background job queue is unavailable",
+        )
+
+
+async def _enqueue_background_job_or_503_async(
+    db: Session,
+    job: BackgroundJob,
+) -> BackgroundJob:
+    if not await asyncio.to_thread(
+        is_background_job_enqueue_available,
+        check_worker=True,
+    ):
+        mark_job_failed(
+            db,
+            job,
+            error_message="Background job queue is unavailable",
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Background job queue is unavailable",
+        )
+
+    try:
+        from ..jobs.tasks import execute_background_job
+
+        setattr(job, "status", BackgroundJobStatus.ENQUEUED.value)
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        async_result = await asyncio.to_thread(
+            execute_background_job.apply_async,
+            args=[job.id],
+            queue=str(job.queue or QUEUE_DEFAULT),
+        )
+        db.refresh(job)
+        setattr(job, "celery_task_id", async_result.id)
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        return job
+    except Exception as exc:  # noqa: BLE001
+        mark_job_failed(
+            db,
+            job,
+            error_message=f"Background job queue is unavailable: {exc}",
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=f"Background job queue is unavailable: {exc}",
+        ) from exc
+
+
 def _atomic_replace_file(source_path: Path, target_path: Path) -> None:
     """Atomically replace target file with source file content.
 
@@ -930,10 +1108,14 @@ def _refresh_existing_file_if_changed(
         )
 
     # Mark succeeded - now atomically replace the file
-    backup_path = existing_path.with_name(
-        f"{existing_path.name}.rollback-{uuid.uuid4().hex}"
-    )
+    backup_path = _build_ingest_backup_path(existing_path)
     shutil.copy2(existing_path, backup_path)
+    remove_backup = True
+    refresh_snapshot = _capture_uploaded_file_refresh_snapshot(
+        existing_record,
+        backup_path=backup_path,
+        reindex_marker_applied=True,
+    )
     try:
         _atomic_replace_file(temp_file_path, existing_path)
         file_record = _upsert_uploaded_file_record(
@@ -944,15 +1126,30 @@ def _refresh_existing_file_if_changed(
             mime_type="text/markdown",
             file_size=existing_path.stat().st_size,
         )
-    except Exception:
-        _restore_ingest_file_backup(
-            file_path=existing_path,
-            backup_path=backup_path,
-            had_existing_file=True,
+    except Exception as exc:
+        try:
+            db_session.rollback()
+        except Exception as rollback_exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to roll back database session before restoring refreshed "
+                "web file for url=%s, file_id=%s: %s",
+                url,
+                existing_record.file_id,
+                rollback_exc,
+            )
+        restore_result = _restore_uploaded_file_refresh_snapshot(
+            db_session,
+            refresh_snapshot,
         )
+        if restore_result.side_effects_may_remain:
+            remove_backup = False
+            raise RollbackFailureError(
+                "Failed to fully restore refreshed web file "
+                f"for {url}: {'; '.join(restore_result.errors) or exc}"
+            ) from exc
         raise
     finally:
-        if backup_path.exists():
+        if remove_backup and backup_path.exists():
             backup_path.unlink()
     processed_urls[url_hash] = str(file_record.file_id)
 
@@ -983,9 +1180,7 @@ def _recreate_missing_existing_file(
     backup_path: Optional[Path] = None
     had_existing_file = existing_path.exists()
     if had_existing_file:
-        backup_path = existing_path.with_name(
-            f"{existing_path.name}.rollback-{uuid.uuid4().hex}"
-        )
+        backup_path = _build_ingest_backup_path(existing_path)
         shutil.copy2(existing_path, backup_path)
 
     try:
@@ -1015,6 +1210,36 @@ def _recreate_missing_existing_file(
         file_path=str(existing_record.storage_path),
         file_id=str(existing_record.file_id),
     )
+
+
+def _compensate_new_web_ingest_files(
+    db: Session,
+    *,
+    file_ids: set[str],
+    user_id: int,
+) -> tuple[bool, list[str]]:
+    cleanup_incomplete = False
+    cleanup_errors: list[str] = []
+    for file_id in sorted(file_ids):
+        cleanup_result = _compensate_new_uploaded_file(
+            db,
+            file_id=file_id,
+            user_id=user_id,
+        )
+        if cleanup_result.side_effects_may_remain:
+            cleanup_incomplete = True
+            cleanup_errors.extend(cleanup_result.errors)
+            db.rollback()
+            continue
+        try:
+            db.commit()
+        except Exception as commit_exc:  # noqa: BLE001
+            cleanup_incomplete = True
+            cleanup_errors.append(
+                f"Database commit failed for file {file_id}: {commit_exc}"
+            )
+            db.rollback()
+    return cleanup_incomplete, cleanup_errors
 
 
 class _WebFileLock:
@@ -1476,29 +1701,14 @@ async def ingest(
     had_existing_file = file_path.exists()
     file_backup_path: Optional[Path] = None
     if had_existing_file:
-        file_backup_path = file_path.with_name(
-            f"{file_path.name}.rollback-{uuid.uuid4().hex}"
-        )
-        shutil.copy2(file_path, file_backup_path)
+        file_backup_path = _build_ingest_backup_path(file_path)
+        await asyncio.to_thread(shutil.copy2, file_path, file_backup_path)
 
     try:
-        total_size = 0
-        # Must not shadow the Form parameter ``chunk_size`` (see issue #199).
-        file_read_buffer_size = 1024 * 1024  # 1MB streaming read buffer only
-        with open(file_path, "wb") as buffer:
-            while True:
-                chunk = await file.read(file_read_buffer_size)
-                if not chunk:
-                    break
-                total_size += len(chunk)
-                if total_size > MAX_FILE_SIZE:
-                    raise HTTPException(
-                        status_code=413,
-                        detail=(
-                            f"File size exceeds maximum limit of {MAX_FILE_SIZE_LABEL}"
-                        ),
-                    )
-                buffer.write(chunk)
+        copy_result = await asyncio.to_thread(
+            _copy_upload_file_to_path, file, file_path
+        )
+        total_size = copy_result.total_size
         logger.info(
             "File uploaded: %s -> %s (user: %s, collection: %s)",
             safe_filename,
@@ -1711,6 +1921,234 @@ async def ingest(
         raise
 
 
+@kb_router.post(
+    "/ingest/jobs",
+    response_model=BackgroundJobResponse,
+    status_code=202,
+)
+@with_kb_user_scope
+@handle_kb_exceptions
+async def create_ingest_job(
+    collection: str = Form(None),
+    file: UploadFile = File(...),
+    *,
+    parse_method: Optional[ParseMethod] = Form(None),
+    chunk_strategy: Optional[ChunkStrategy] = Form(None),
+    chunk_size: Optional[int] = Form(None, gt=0),
+    chunk_overlap: Optional[int] = Form(None, ge=0),
+    separators: Optional[str] = Form(None),
+    embedding_model_id: str = Form("text-embedding-v4"),
+    embedding_batch_size: Optional[int] = Form(None, gt=0),
+    max_retries: Optional[int] = Form(None, ge=0),
+    retry_delay: Optional[float] = Form(None, ge=0.0),
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Upload a document and enqueue durable KB ingestion."""
+    if not file.filename or not file.filename.strip():
+        raise HTTPException(status_code=422, detail="No filename provided")
+
+    safe_filename = Path(file.filename).name
+    if not is_allowed_file(safe_filename, "general"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"File type {Path(safe_filename).suffix.lower()} not supported",
+        )
+    _validate_parser_for_file(
+        safe_filename, parse_method, user_id=getattr(_user, "id", None)
+    )
+
+    if not collection or not collection.strip():
+        collection = Path(safe_filename).stem
+
+    try:
+        safe_collection = sanitize_path_component(collection, "collection")
+        file_path = Path(
+            get_upload_path(
+                safe_filename,
+                user_id=int(_user.id),
+                collection=safe_collection,
+                collection_is_sanitized=True,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid collection name: {str(e)}"
+        ) from e
+
+    await _ensure_collection_access(safe_collection, _user, allow_create=True)
+    await _ensure_background_job_queue_available_async()
+
+    try:
+        get_collection_sync(safe_collection)
+        collection_existed_before = True
+    except ValueError:
+        collection_existed_before = False
+
+    existing_file_record = (
+        db.query(UploadedFile)
+        .filter(UploadedFile.storage_path == str(file_path))
+        .first()
+    )
+    file_id = (
+        str(existing_file_record.file_id)
+        if existing_file_record is not None
+        else _background_ingest_file_id(user_id=int(_user.id), storage_path=file_path)
+    )
+    staged_file_path = _build_background_ingest_staging_path(
+        user_id=int(_user.id),
+        filename=safe_filename,
+    )
+
+    try:
+        copy_result = await asyncio.to_thread(
+            _copy_upload_file_to_path,
+            file,
+            staged_file_path,
+        )
+        total_size = copy_result.total_size
+        file_sha256 = copy_result.sha256
+    except HTTPException:
+        _cleanup_background_ingest_staging_file(staged_file_path)
+        raise
+    except Exception as upload_exc:
+        _cleanup_background_ingest_staging_file(staged_file_path)
+        raise upload_exc
+
+    mime_type = (
+        getattr(file, "content_type", None)
+        or mimetypes.guess_type(safe_filename)[0]
+        or "application/octet-stream"
+    )
+
+    final_chunk_size = chunk_size if chunk_size is not None and chunk_size > 0 else 1000
+    final_chunk_overlap = (
+        chunk_overlap if chunk_overlap is not None and chunk_overlap >= 0 else 200
+    )
+    if final_chunk_overlap >= final_chunk_size:
+        final_chunk_overlap = min(int(final_chunk_size * 0.2), final_chunk_size - 1)
+
+    parsed_separators = _parse_separators(separators)
+    final_strategy = (
+        chunk_strategy if chunk_strategy is not None else ChunkStrategy.RECURSIVE
+    )
+    normalized_parse_method = _normalize_parse_method_for_filename(
+        parse_method, safe_filename
+    )
+    config = IngestionConfig(
+        parse_method=normalized_parse_method,
+        chunk_strategy=final_strategy,
+        chunk_size=final_chunk_size,
+        chunk_overlap=final_chunk_overlap,
+        separators=parsed_separators,
+        embedding_model_id=embedding_model_id,
+        embedding_batch_size=embedding_batch_size
+        if embedding_batch_size is not None and embedding_batch_size > 0
+        else 10,
+        max_retries=max_retries if max_retries is not None and max_retries >= 0 else 3,
+        retry_delay=retry_delay
+        if retry_delay is not None and retry_delay >= 0
+        else 1.0,
+    )
+
+    idempotency_key = _background_job_idempotency_key(
+        "kb.ingest.document",
+        {
+            "collection": safe_collection,
+            "filename": safe_filename,
+            "file_sha256": file_sha256,
+            "ingestion_config": config.model_dump(mode="json"),
+            "user_id": int(_user.id),
+        },
+    )
+    existing_job = get_non_terminal_background_job_by_idempotency_key(
+        db,
+        idempotency_key,
+    )
+    if existing_job is not None:
+        _cleanup_background_ingest_staging_file(staged_file_path)
+        return existing_job
+
+    generation_id = str(uuid.uuid4())
+
+    saved_collection_config = False
+    try:
+        metadata_store = get_metadata_store()
+        await metadata_store.save_collection_config(
+            collection=safe_collection,
+            config_json=config.model_dump_json(exclude_unset=True),
+            user_id=int(_user.id),
+        )
+        saved_collection_config = True
+    except Exception as e:
+        logger.warning("Failed to save collection config during async ingest: %s", e)
+
+    job_payload = {
+        "collection": safe_collection,
+        "source_path": str(staged_file_path),
+        "target_path": str(file_path),
+        "file_id": file_id,
+        "generation_id": generation_id,
+        "file_sha256": file_sha256,
+        "filename": safe_filename,
+        "mime_type": mime_type,
+        "file_size": int(total_size),
+        "user_id": int(_user.id),
+        "is_admin": bool(_user.is_admin),
+        "ingestion_config": config.model_dump(mode="json"),
+        "collection_existed_before": collection_existed_before,
+    }
+
+    try:
+        job = create_background_job(
+            db,
+            user_id=int(_user.id),
+            job_type=BackgroundJobType.KB_INGEST_DOCUMENT,
+            payload=job_payload,
+            idempotency_key=idempotency_key,
+            reuse_terminal_idempotency_key=False,
+        )
+        if dict(job.payload or {}).get("source_path") != str(staged_file_path):
+            _cleanup_background_ingest_staging_file(staged_file_path)
+            return job
+        admit_kb_ingest_target(
+            db,
+            user_id=int(_user.id),
+            collection=safe_collection,
+            target_path=str(file_path),
+            file_id=file_id,
+            generation_id=generation_id,
+            job_id=str(job.id),
+            file_sha256=file_sha256,
+        )
+    except Exception:
+        db.rollback()
+        _cleanup_background_ingest_staging_file(staged_file_path)
+        if saved_collection_config and not collection_existed_before:
+            await _cleanup_failed_new_collection_metadata(
+                collection_name=safe_collection,
+                user=_user,
+            )
+        raise
+    try:
+        return await _enqueue_background_job_or_503_async(db, job)
+    except Exception:
+        release_kb_ingest_target_generation(
+            db,
+            user_id=int(_user.id),
+            collection=safe_collection,
+            target_path=str(file_path),
+            generation_id=generation_id,
+        )
+        _cleanup_background_ingest_staging_file(staged_file_path)
+        if saved_collection_config and not collection_existed_before:
+            await _cleanup_failed_new_collection_metadata(
+                collection_name=safe_collection,
+                user=_user,
+            )
+        raise
+
+
 @kb_router.post("/ingest-cloud", response_model=List[IngestionResult])
 @handle_kb_exceptions
 async def ingest_cloud(
@@ -1823,10 +2261,10 @@ async def ingest_cloud(
                     # Save to local path
                     had_existing_file = file_path.exists()
                     if had_existing_file:
-                        file_backup_path = file_path.with_name(
-                            f"{file_path.name}.rollback-{uuid.uuid4().hex}"
+                        file_backup_path = _build_ingest_backup_path(file_path)
+                        await asyncio.to_thread(
+                            shutil.copy2, file_path, file_backup_path
                         )
-                        shutil.copy2(file_path, file_backup_path)
 
                     # Download file directly to disk
                     try:
@@ -2666,6 +3104,7 @@ async def ingest_web(
         # Note: For large-scale web ingestion (>10000 pages), consider using
         # a bounded-size dict (e.g., with maxitems) to control memory usage.
         _processed_urls: Dict[str, str] = {}
+        _new_web_file_ids: set[str] = set()
 
         # Define file handler for persistent storage and UploadedFile record creation
         def _handle_web_file(
@@ -2819,6 +3258,7 @@ async def ingest_web(
                     )
 
                     _processed_urls[url_hash] = str(file_record.file_id)
+                    _new_web_file_ids.add(str(file_record.file_id))
                     return FileHandlerResult(
                         file_path=str(persistent_file),
                         file_id=str(file_record.file_id),
@@ -2876,11 +3316,34 @@ async def ingest_web(
             result = result.model_copy(update={"message": web_updated_message})
 
         if result.status == "error":
-            if not collection_existed_before:
-                await _cleanup_failed_new_collection_metadata(
-                    collection_name=safe_collection,
-                    user=_user,
+            cleanup_incomplete = False
+            cleanup_errors: list[str] = []
+            if result.documents_created == 0:
+                cleanup_incomplete, cleanup_errors = _compensate_new_web_ingest_files(
+                    db,
+                    file_ids=_new_web_file_ids,
+                    user_id=int(_user.id),
                 )
+
+            if cleanup_incomplete:
+                cleanup_message = "Web ingest rollback incomplete: " + "; ".join(
+                    cleanup_errors or ["side effects may remain"]
+                )
+                result = result.model_copy(
+                    update={"warnings": [*result.warnings, cleanup_message]}
+                )
+            if not collection_existed_before:
+                if cleanup_incomplete:
+                    logger.warning(
+                        "Skipping failed web-ingest collection metadata cleanup for %s "
+                        "because file rollback is incomplete",
+                        safe_collection,
+                    )
+                else:
+                    await _cleanup_failed_new_collection_metadata(
+                        collection_name=safe_collection,
+                        user=_user,
+                    )
             return JSONResponse(status_code=500, content=result.model_dump())
         if result.status == "partial":
             logger.warning(
@@ -2916,6 +3379,173 @@ async def ingest_web(
             status_code=500,
             detail=f"Server internal error: {str(e)}",
         ) from e
+
+
+@kb_router.post(
+    "/ingest-web/jobs",
+    response_model=BackgroundJobResponse,
+    status_code=202,
+)
+@with_kb_user_scope
+@handle_kb_exceptions
+async def create_ingest_web_job(
+    collection: str = Form(..., description="Target collection name"),
+    start_url: str = Form(..., description="Starting URL for crawling"),
+    max_pages: Optional[int] = Form(100),
+    max_depth: Optional[int] = Form(3),
+    url_patterns: Optional[str] = Form(None),
+    exclude_patterns: Optional[str] = Form(None),
+    same_domain_only: Optional[bool] = Form(True),
+    content_selector: Optional[str] = Form(None),
+    remove_selectors: Optional[str] = Form(None),
+    concurrent_requests: Optional[int] = Form(3, ge=1, le=10),
+    request_delay: Optional[float] = Form(1.0, ge=0),
+    timeout: Optional[int] = Form(30, ge=1),
+    respect_robots_txt: Optional[bool] = Form(True),
+    parse_method: Optional[ParseMethod] = Form(None),
+    chunk_strategy: Optional[ChunkStrategy] = Form(None),
+    chunk_size: Optional[int] = Form(None, gt=0),
+    chunk_overlap: Optional[int] = Form(None, ge=0),
+    separators: Optional[str] = Form(None),
+    embedding_model_id: str = Form("text-embedding-v4"),
+    embedding_batch_size: Optional[int] = Form(None, gt=0),
+    max_retries: Optional[int] = Form(None, ge=0),
+    retry_delay: Optional[float] = Form(None, ge=0.0),
+    _user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Enqueue durable website ingestion into the knowledge base."""
+    try:
+        safe_collection = sanitize_path_component(collection, "collection")
+    except ValueError as e:
+        raise HTTPException(
+            status_code=422, detail=f"Invalid collection name: {str(e)}"
+        ) from e
+
+    await _ensure_collection_access(safe_collection, _user, allow_create=True)
+
+    url_patterns_list = (
+        [p.strip() for p in url_patterns.split(",")] if url_patterns else None
+    )
+    exclude_patterns_list = (
+        [p.strip() for p in exclude_patterns.split(",")] if exclude_patterns else None
+    )
+    remove_selectors_list = (
+        [s.strip() for s in remove_selectors.split(",")] if remove_selectors else None
+    )
+
+    try:
+        crawl_config = WebCrawlConfig(
+            start_url=start_url,
+            max_pages=max_pages or 100,
+            max_depth=max_depth or 3,
+            url_patterns=url_patterns_list,
+            exclude_patterns=exclude_patterns_list,
+            same_domain_only=same_domain_only if same_domain_only is not None else True,
+            content_selector=content_selector,
+            remove_selectors=remove_selectors_list,
+            concurrent_requests=concurrent_requests or 3,
+            request_delay=request_delay or 1.0,
+            timeout=timeout or 30,
+            respect_robots_txt=(
+                respect_robots_txt if respect_robots_txt is not None else True
+            ),
+        )
+    except ValidationError as exc:
+        errors = exc.errors()
+        detail = errors[0]["msg"] if errors else "Invalid start_url"
+        if isinstance(detail, str) and detail.startswith("Value error, "):
+            detail = detail.removeprefix("Value error, ")
+        raise HTTPException(status_code=422, detail=detail) from exc
+    await _ensure_background_job_queue_available_async()
+
+    try:
+        get_collection_sync(safe_collection)
+        collection_existed_before = True
+    except ValueError:
+        collection_existed_before = False
+
+    final_chunk_size = chunk_size if chunk_size is not None and chunk_size > 0 else 1000
+    final_chunk_overlap = (
+        chunk_overlap if chunk_overlap is not None and chunk_overlap >= 0 else 200
+    )
+    if final_chunk_overlap >= final_chunk_size:
+        final_chunk_overlap = min(int(final_chunk_size * 0.2), final_chunk_size - 1)
+
+    web_parsed_separators = _parse_separators(separators)
+    web_final_strategy = (
+        chunk_strategy if chunk_strategy is not None else ChunkStrategy.RECURSIVE
+    )
+    ingestion_config = IngestionConfig(
+        parse_method=parse_method if parse_method is not None else ParseMethod.DEFAULT,
+        chunk_strategy=web_final_strategy,
+        chunk_size=final_chunk_size,
+        chunk_overlap=final_chunk_overlap,
+        separators=web_parsed_separators,
+        embedding_model_id=embedding_model_id,
+        embedding_batch_size=embedding_batch_size
+        if embedding_batch_size is not None and embedding_batch_size > 0
+        else 10,
+        max_retries=max_retries if max_retries is not None and max_retries >= 0 else 3,
+        retry_delay=retry_delay
+        if retry_delay is not None and retry_delay >= 0
+        else 1.0,
+    )
+
+    idempotency_key = _background_job_idempotency_key(
+        "kb.ingest.web",
+        {
+            "collection": safe_collection,
+            "crawl_config": crawl_config.model_dump(mode="json"),
+            "ingestion_config": ingestion_config.model_dump(mode="json"),
+            "user_id": int(_user.id),
+        },
+    )
+    existing_job = get_non_terminal_background_job_by_idempotency_key(
+        db,
+        idempotency_key,
+    )
+    if existing_job is not None:
+        return existing_job
+
+    saved_collection_config = False
+    try:
+        metadata_store = get_metadata_store()
+        await metadata_store.save_collection_config(
+            collection=safe_collection,
+            config_json=ingestion_config.model_dump_json(exclude_unset=True),
+            user_id=int(_user.id),
+        )
+        saved_collection_config = True
+    except Exception as e:
+        logger.warning(
+            "Failed to save collection config during async web ingest: %s", e
+        )
+
+    try:
+        job = create_background_job(
+            db,
+            user_id=int(_user.id),
+            job_type=BackgroundJobType.KB_INGEST_WEB,
+            payload={
+                "collection": safe_collection,
+                "crawl_config": crawl_config.model_dump(mode="json"),
+                "ingestion_config": ingestion_config.model_dump(mode="json"),
+                "user_id": int(_user.id),
+                "is_admin": bool(_user.is_admin),
+                "collection_existed_before": collection_existed_before,
+            },
+            idempotency_key=idempotency_key,
+            reuse_terminal_idempotency_key=False,
+        )
+        return await _enqueue_background_job_or_503_async(db, job)
+    except Exception:
+        if saved_collection_config and not collection_existed_before:
+            await _cleanup_failed_new_collection_metadata(
+                collection_name=safe_collection,
+                user=_user,
+            )
+        raise
 
 
 class BatchDeleteCollectionsRequest(BaseModel):
@@ -3431,6 +4061,12 @@ def _perform_kb_collection_delete(
             is_admin=is_admin,
             db=db,
         )
+        for owner_id in sorted(mutation_scope.owner_user_ids):
+            tombstone_kb_ingest_targets_for_collection(
+                db,
+                user_id=owner_id,
+                collection=safe_collection,
+            )
 
         result = delete_collection(safe_collection, user_id, is_admin)
 
@@ -4404,6 +5040,24 @@ async def delete_document_api(
             )
         else:
             for cleanup_file_id in cleanup_candidate_file_ids:
+                if cleanup_file_id not in remaining_file_ids:
+                    cleanup_record = (
+                        db.query(UploadedFile)
+                        .filter(
+                            UploadedFile.user_id == user_id_int,
+                            UploadedFile.file_id == cleanup_file_id,
+                        )
+                        .first()
+                    )
+                    if cleanup_record is not None:
+                        tombstone_kb_ingest_target(
+                            db,
+                            user_id=user_id_int,
+                            collection=safe_collection_name,
+                            target_path=str(cleanup_record.storage_path),
+                            file_id=str(cleanup_record.file_id),
+                            commit=False,
+                        )
                 _delete_uploaded_file_if_orphaned(
                     db,
                     file_id=cleanup_file_id,

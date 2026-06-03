@@ -7,16 +7,16 @@ from typing import Any, cast
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from xagent.web.models.agent import Agent, AgentStatus
+from xagent.web.models.agent import Agent, AgentOrigin, AgentStatus
 from xagent.web.models.user import User
 from xagent.web.services.llm_utils import UserAwareModelStorage
 
 from ..models.workforce import Workforce, WorkforceBuilderMessage
+from .agent_access import list_accessible_published_agents
 from .agent_store import AgentStore
 from .hot_path_cache import invalidate_agent_cache
 from .workforce_access import (
     can_create_workforce,
-    list_accessible_published_agents,
     resolve_create_scope,
 )
 from .workforce_names import resolve_unique_agent_name, resolve_unique_workforce_name
@@ -261,8 +261,9 @@ def _create_manager_agent_from_plan(
         skills=[],
         tool_categories=[],
         suggested_prompts=[],
+        origin=AgentOrigin.WORKFORCE_GENERATED_MANAGER.value,
         status=AgentStatus.PUBLISHED,
-        widget_enabled=True,
+        widget_enabled=False,
         allowed_domains=[],
     )
 

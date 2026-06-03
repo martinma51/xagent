@@ -12,7 +12,7 @@ import { ClarificationForm } from "@/components/chat/clarification-form"
 
 interface WebSocketMessage {
   type: string
-  data: unknown
+  data?: unknown
   timestamp: string
   task_id?: number
   step_id?: string
@@ -36,10 +36,12 @@ export interface Interaction {
 import { useWebSocket } from "@/hooks/use-websocket"
 import { useAuth } from "@/contexts/auth-context"
 import { getApiUrl, getUploadApiUrl, shouldAutoOpenTaskPreview } from "@/lib/utils"
-import { apiRequest, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
+import { apiRequest, getApiErrorMessage, getUploadErrorMessage, isJsonRecord, parseApiResponse, UPLOAD_ERROR_MESSAGES } from "@/lib/api-wrapper"
 import { useI18n } from "@/contexts/i18n-context"
 import { normalizeTimestampMs } from "@/lib/time-utils"
 import { unwrapFinalAnswerContent } from "@/lib/final-answer"
+import { normalizeTaskCompletedMessage } from "@/lib/task-completion"
+import { isStoppedTaskStatus, normalizeTaskStatus, type TaskStatus } from "@/lib/task-status"
 import {
   getFinalAnswerStreamActionPayload,
   getFinalAnswerStreamMessageId,
@@ -115,6 +117,76 @@ const dispatchAutoOpenPreview = (
   })
 }
 
+const OPTIMISTIC_USER_MESSAGE_PREFIX = "msg-user-optimistic"
+const USER_MESSAGE_REPLACE_WINDOW_MS = 30000
+
+const extractTextFromReactNode = (node: React.ReactNode): string => {
+  if (typeof node === 'string') return node
+  if (typeof node === 'number') return node.toString()
+  if (Array.isArray(node)) return node.map(extractTextFromReactNode).join('')
+  if (React.isValidElement(node) && node.props.children) {
+    return extractTextFromReactNode(node.props.children)
+  }
+  return ''
+}
+
+const normalizeMessageContent = (content: string | React.ReactNode): string => {
+  if (typeof content === 'string') {
+    return content.trim()
+  }
+  if (typeof content === 'number') {
+    return content.toString()
+  }
+  if (React.isValidElement(content) || Array.isArray(content)) {
+    return extractTextFromReactNode(content).trim()
+  }
+  return ''
+}
+
+const findOptimisticUserMessageIndex = (
+  messages: Message[],
+  incomingMessage: Message,
+): number => {
+  if (incomingMessage.role !== "user") {
+    return -1
+  }
+
+  const normalizedIncomingContent = normalizeMessageContent(incomingMessage.content)
+  if (!normalizedIncomingContent) {
+    return -1
+  }
+
+  const incomingTimestamp = normalizeTimestampMs(incomingMessage.timestamp)
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const existingMessage = messages[index]
+    if (
+      existingMessage.role !== "user" ||
+      typeof existingMessage.id !== "string" ||
+      !existingMessage.id.startsWith(OPTIMISTIC_USER_MESSAGE_PREFIX)
+    ) {
+      continue
+    }
+
+    if (normalizeMessageContent(existingMessage.content) !== normalizedIncomingContent) {
+      continue
+    }
+
+    const existingTimestamp = normalizeTimestampMs(existingMessage.timestamp)
+    if (
+      Number.isFinite(existingTimestamp) &&
+      Number.isFinite(incomingTimestamp) &&
+      Math.abs(incomingTimestamp - existingTimestamp) > USER_MESSAGE_REPLACE_WINDOW_MS
+    ) {
+      continue
+    }
+
+    return index
+  }
+
+  return -1
+}
+
 // Function to clear duplicate message cache
 const clearDuplicateMessageCache = () => {
   recentMessages.clear()
@@ -134,25 +206,7 @@ let isHistoricalDataLoading = false
 // Store pending task info for auto-execution after historical data loads
 let pendingTaskToExecute: { description: string } | null = null
 const isDuplicateMessage = (content: string | React.ReactNode, type: string = 'general', force: boolean = false, shouldCache: boolean = true) => {
-  // Convert React element to string representation for comparison
-  let contentStr: string
-  if (typeof content === 'string') {
-    contentStr = content.trim()
-  } else if (React.isValidElement(content)) {
-    // For React elements, extract text content more comprehensively
-    const extractTextFromReactNode = (node: React.ReactNode): string => {
-      if (typeof node === 'string') return node
-      if (typeof node === 'number') return node.toString()
-      if (Array.isArray(node)) return node.map(extractTextFromReactNode).join('')
-      if (React.isValidElement(node) && node.props.children) {
-        return extractTextFromReactNode(node.props.children)
-      }
-      return ''
-    }
-    contentStr = extractTextFromReactNode(content).trim()
-  } else {
-    contentStr = ''
-  }
+  const contentStr = normalizeMessageContent(content)
 
   const key = `${type}:${contentStr}`
   if (!force && recentMessages.has(key)) {
@@ -282,7 +336,7 @@ interface Message {
 interface Task {
   id: string
   title: string
-  status: "pending" | "running" | "completed" | "failed" | "paused" | "waiting_for_user"
+  status: TaskStatus
   description: string
   createdAt: string | number
   updatedAt: string | number
@@ -298,6 +352,8 @@ interface Task {
   executionMode?: "flash" | "balanced" | "think"
   isDag?: boolean
   agentId?: number
+  agentName?: string
+  agentLogoUrl?: string
   waitingQuestion?: string
   waitingInteractions?: Interaction[]
 }
@@ -335,6 +391,23 @@ const normalizeStepStatus = (status: unknown): StepExecution["status"] => {
 
 const getString = (value: unknown, fallback = ""): string => typeof value === "string" ? value : fallback
 const getStringArray = (value: unknown): string[] => Array.isArray(value) ? value.map(item => String(item)) : []
+
+const getWebSocketErrorMessage = (message: WebSocketMessage): string => {
+  const root = message as unknown as Record<string, unknown>
+  const data = isJsonRecord(message.data) ? message.data : null
+  return getString(data?.message) || getString(data?.error) || getString(root.message) || getString(root.error) || "Unknown error"
+}
+
+const getWebSocketTaskStatus = (message: WebSocketMessage): Task["status"] | null => {
+  const root = message as unknown as Record<string, unknown>
+  const data = isJsonRecord(message.data) ? message.data : null
+  const rootTask = isJsonRecord(root.task) ? root.task : null
+  const dataTask = isJsonRecord(data?.task) ? data.task : null
+  return normalizeTaskStatus(dataTask?.status) || normalizeTaskStatus(rootTask?.status) || normalizeTaskStatus(data?.status) || normalizeTaskStatus(root.status) || null
+}
+
+const shouldStopProcessingForTaskStatus = (status: unknown): boolean =>
+  isStoppedTaskStatus(status)
 
 const stepsFromPlanData = (planData: unknown, existingSteps: StepExecution[]): StepExecution[] | null => {
   const planRecord = planData && typeof planData === "object" ? planData as Record<string, unknown> : null
@@ -505,7 +578,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, isHistoryLoading: action.payload }
 
     case "SYNC_PROCESSING_STATUS":
-      if (state.currentTask?.status === 'completed' || state.currentTask?.status === 'failed') {
+      if (shouldStopProcessingForTaskStatus(state.currentTask?.status)) {
         return { ...state, isProcessing: false }
       }
       return state
@@ -565,6 +638,26 @@ function appReducer(state: AppState, action: AppAction): AppState {
         }
       }
 
+      const optimisticUserMessageIndex = findOptimisticUserMessageIndex(
+        state.messages,
+        messageToAdd,
+      )
+      if (optimisticUserMessageIndex >= 0) {
+        const updatedMessages = state.messages.map((message, index) =>
+          index === optimisticUserMessageIndex
+            ? {
+              ...message,
+              ...messageToAdd,
+              id: message.id,
+            }
+            : message
+        )
+        updatedMessages.sort((a, b) => {
+          return normalizeTimestampMs(a.timestamp) - normalizeTimestampMs(b.timestamp)
+        })
+        return { ...state, messages: updatedMessages, traceEvents: newTraceEvents }
+      }
+
       const updatedMessages = [...state.messages, messageToAdd]
       updatedMessages.sort((a, b) => {
         return normalizeTimestampMs(a.timestamp) - normalizeTimestampMs(b.timestamp)
@@ -605,20 +698,50 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, messages: updatedMessages }
     }
 
-    case "SET_CURRENT_TASK":
-      return { ...state, currentTask: action.payload }
+    case "SET_CURRENT_TASK": {
+      const incomingTask = action.payload
+        ? {
+          ...action.payload,
+          status:
+            normalizeTaskStatus(action.payload.status) ||
+            (state.currentTask?.id === action.payload.id
+              ? state.currentTask.status
+              : "pending"),
+        }
+        : null
 
-    case "UPDATE_TASK_STATUS":
+      const currentTask = (state.currentTask && incomingTask && state.currentTask.id === incomingTask.id)
+        ? { ...state.currentTask, ...incomingTask, agentName: incomingTask.agentName || state.currentTask.agentName, agentLogoUrl: incomingTask.agentLogoUrl || state.currentTask.agentLogoUrl }
+        : incomingTask
+
+      return {
+        ...state,
+        currentTask,
+        isProcessing: currentTask && shouldStopProcessingForTaskStatus(currentTask.status)
+          ? false
+          : state.isProcessing,
+      }
+    }
+
+    case "UPDATE_TASK_STATUS": {
       if (!state.currentTask) {
         return state
       }
 
-      const isWaitingForUser = action.payload.status === "waiting_for_user"
+      const nextStatus = normalizeTaskStatus(action.payload.status)
+      if (!nextStatus) {
+        return state
+      }
+
+      const isWaitingForUser = nextStatus === "waiting_for_user"
       return {
         ...state,
+        isProcessing: shouldStopProcessingForTaskStatus(nextStatus)
+          ? false
+          : state.isProcessing,
         currentTask: {
           ...state.currentTask,
-          status: action.payload.status,
+          status: nextStatus,
           updatedAt: new Date().toISOString(),
           waitingQuestion: isWaitingForUser
             ? action.payload.waitingQuestion ?? state.currentTask.waitingQuestion
@@ -628,6 +751,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
             : undefined,
         },
       }
+    }
 
     case "SET_DAG_EXECUTION":
       return { ...state, dagExecution: action.payload }
@@ -1182,6 +1306,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
           // Handle structured trace events
           if (eventType === "task_info") {
             const taskData = eventData
+            const taskStatus = normalizeTaskStatus(taskData.status) || "pending"
             console.log('📥 Received task_info event:', {
               taskData,
               status: taskData.status,
@@ -1189,13 +1314,13 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             })
 
             // Store pending task for auto-execution
-            if (taskData.status === 'pending' && taskData.description) {
+            if (taskStatus === 'pending' && taskData.description) {
               pendingTaskToExecute = { description: taskData.description }
               console.log('💾 Stored pending task for auto-execution:', taskData.description)
             }
 
             // Check if status changed and trigger update if so
-            if (currentState.currentTask?.id === taskData.id.toString() && currentState.currentTask?.status !== taskData.status) {
+            if (currentState.currentTask?.id === taskData.id.toString() && currentState.currentTask?.status !== taskStatus) {
               dispatch({ type: "TRIGGER_TASK_UPDATE" })
             }
 
@@ -1205,7 +1330,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                 id: taskData.id.toString(),
                 title: taskData.title,
                 description: taskData.description,
-                status: taskData.status,
+                status: taskStatus,
                 createdAt: taskData.created_at,
                 updatedAt: taskData.updated_at,
                 modelId: taskData.model_id,
@@ -1219,6 +1344,8 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                 executionMode: taskData.execution_mode,
                 isDag: taskData.is_dag,
                 agentId: taskData.agent_id,
+                agentName: taskData.agent_name,
+                agentLogoUrl: taskData.agent_logo_url,
                 waitingQuestion: taskData.waiting_question,
                 waitingInteractions: normalizeInteractions(taskData.waiting_interactions),
               }
@@ -1380,6 +1507,20 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             }
           }
 
+          // Agent progress messages belong in the execution timeline, not the chat transcript.
+          else if (eventType === "agent_progress") {
+            dispatch({
+              type: "ADD_TRACE_EVENT",
+              payload: {
+                event_id: message.event_id || eventData.event_id || generateMessageId("trace-agent-progress"),
+                event_type: eventType,
+                step_id: message.step_id || eventData.step_id,
+                timestamp: message.timestamp?.toString() || Date.now().toString(),
+                data: eventData,
+              }
+            })
+          }
+
           // Agent-to-user messages, including ask_user_question prompts.
           else if (eventType === "agent_message" || eventType === "ai_message") {
             const rawMessageContent = eventData.message || eventData.content || ""
@@ -1391,11 +1532,37 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               return
             }
             const interactions = normalizeInteractions(eventData.metadata?.interactions)
-            const expectsResponse =
+            const isAgentMessage = eventType === "agent_message"
+            const isAiMessage = eventType === "ai_message"
+            const expectsUserResponse =
+              isAgentMessage &&
+              eventData.expect_response === true
+            const agentMessageDisplay = eventData.display || eventData.metadata?.display
+            const isExplicitTranscriptMessage =
+              agentMessageDisplay === "chat" ||
+              eventData.source === "chat_history" ||
+              eventData.role === "assistant"
+            const isTimelineAgentMessage =
               eventType === "agent_message" &&
-              (eventData.expect_response === true ||
-                eventData.message_type === "question")
-            if (expectsResponse) {
+              !isExplicitTranscriptMessage &&
+              agentMessageDisplay === "timeline"
+            if (isTimelineAgentMessage) {
+              dispatch({
+                type: "ADD_TRACE_EVENT",
+                payload: {
+                  event_id: message.event_id || eventData.event_id || generateMessageId("trace-agent-progress"),
+                  event_type: "agent_progress",
+                  step_id: message.step_id || eventData.step_id,
+                  timestamp: message.timestamp?.toString() || Date.now().toString(),
+                  data: eventData,
+                }
+              })
+              return
+            }
+            const shouldHideAgentMessage =
+              isAgentMessage &&
+              eventData.visible === false
+            if (expectsUserResponse) {
               dispatch({
                 type: "UPDATE_TASK_STATUS",
                 payload: {
@@ -1406,9 +1573,12 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
               })
             }
             const streamMessageId =
-              eventType === "ai_message"
+              isAiMessage
                 ? getFinalAnswerStreamMessageId(eventData)
                 : undefined
+            if (shouldHideAgentMessage) {
+              return
+            }
             if (!streamMessageId && isDuplicateMessage(messageContent, 'agent-message')) {
               return
             }
@@ -3490,10 +3660,10 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
         break
 
       case "task_completed":
-        const taskData = message.data as { success?: boolean; result?: string | Record<string, unknown>; file_outputs?: string[] }
+        const taskData = normalizeTaskCompletedMessage(message)
         dispatch({
           type: "UPDATE_TASK_STATUS",
-          payload: { status: taskData.success ? "completed" : "failed" }
+          payload: { status: taskData.status }
         })
         dispatch({ type: "TRIGGER_TASK_UPDATE" })
         dispatch({ type: "SET_PROCESSING", payload: false })  // Stop processing on task completion
@@ -3502,13 +3672,13 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
         if (state.dagExecution) {
           const updatedDAGExecution = {
             ...state.dagExecution,
-            phase: (taskData.success ? "completed" : "failed") as "completed" | "failed",
+            phase: taskData.status,
             updated_at: new Date().toISOString()
           }
           dispatch({ type: "SET_DAG_EXECUTION", payload: updatedDAGExecution })
         } else {
           const dagExecution: DAGExecution = {
-            phase: (taskData.success ? "completed" : "failed") as "completed" | "failed",
+            phase: taskData.status,
             current_plan: {},
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -3522,14 +3692,14 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
         }
 
         // Handle file outputs
-        if (taskData.file_outputs && taskData.file_outputs.length > 0) {
-          const fileCount = taskData.file_outputs.length
+        if (taskData.fileOutputs.length > 0) {
+          const fileCount = taskData.fileOutputs.length
           const fileContent = (
             <>
               <FileText className="h-4 w-4 inline mr-2 text-green-500" />
               {t('agent.logs.event.messages.fileOutputsGenerated', { count: fileCount })}:
               <div className="mt-2 space-y-1">
-                {taskData.file_outputs.map((file: string | any, index: number) => {
+                {taskData.fileOutputs.map((file: string | any, index: number) => {
                   let fileName, filePath
                   if (typeof file === 'object' && file !== null) {
                     fileName = file.filename || 'unknown'
@@ -3545,7 +3715,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
                       <button
                         onClick={() => {
                           // Dispatch custom event to open file preview with all files
-                          const allFiles = normalizeGeneratedPreviewFiles(taskData.file_outputs)
+                          const allFiles = normalizeGeneratedPreviewFiles(taskData.fileOutputs)
 
                           if (!filePath) {
                             return
@@ -3586,7 +3756,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             })
           }
 
-          dispatchAutoOpenPreview(taskData.file_outputs, dispatch)
+          dispatchAutoOpenPreview(taskData.fileOutputs, dispatch)
         }
 
         dispatch({ type: "SET_PROCESSING", payload: false })
@@ -3663,6 +3833,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
       case "task_paused":
         console.trace('Original message:', JSON.stringify(message), 'Handler: handleMessage (task_paused)')
         dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: "paused" } })
+        dispatch({ type: "SET_PROCESSING", payload: false })
         break
 
       case "task_waiting_for_user":
@@ -3678,6 +3849,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             waitingInteractions: interactions.length > 0 ? interactions : undefined,
           }
         })
+        dispatch({ type: "SET_PROCESSING", payload: false })
         if (
           waitingMessage &&
           waitingMessage !== "Task waiting for user response" &&
@@ -3706,10 +3878,18 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
 
       case "agent_error":
         console.trace('Original message:', JSON.stringify(message), 'Handler: handleMessage (agent_error)')
-        const errorData = message.data as { message?: string }
+        const agentErrorMessage = getWebSocketErrorMessage(message)
+        const agentErrorTaskStatus = getWebSocketTaskStatus(message)
 
-        // Update DAG execution status to failed
-        if (state.dagExecution) {
+        if (agentErrorTaskStatus) {
+          dispatch({
+            type: "UPDATE_TASK_STATUS",
+            payload: { status: agentErrorTaskStatus },
+          })
+          dispatch({ type: "TRIGGER_TASK_UPDATE" })
+        }
+
+        if (agentErrorTaskStatus === "failed" && state.dagExecution) {
           const updatedDAGExecution = {
             ...state.dagExecution,
             phase: "failed" as const,
@@ -3718,17 +3898,48 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
           dispatch({ type: "SET_DAG_EXECUTION", payload: updatedDAGExecution })
         }
 
-        dispatch({ type: "SET_PROCESSING", payload: false })
+        if (shouldStopProcessingForTaskStatus(agentErrorTaskStatus)) {
+          dispatch({ type: "SET_PROCESSING", payload: false })
+        }
+
         dispatch({
           type: "ADD_MESSAGE",
           payload: {
             id: generateMessageId("msg"),
             role: "assistant",
-            content: `${t('agent.logs.event.messages.errorPrefix')} ${errorData.message || t('common.errors.unknownError')}`,
+            content: `${t('agent.logs.event.messages.errorPrefix')} ${agentErrorMessage || t('common.errors.unknownError')}`,
             timestamp: message.timestamp,
             status: "failed",
           },
         })
+        break
+
+      case "error":
+      case "task_error":
+        console.trace('Original message:', JSON.stringify(message), 'Handler: handleMessage (error)')
+        const websocketErrorMessage = getWebSocketErrorMessage(message)
+        const websocketTaskStatus = getWebSocketTaskStatus(message)
+
+        if (websocketTaskStatus) {
+          dispatch({ type: "UPDATE_TASK_STATUS", payload: { status: websocketTaskStatus } })
+          dispatch({ type: "TRIGGER_TASK_UPDATE" })
+        }
+        if (shouldStopProcessingForTaskStatus(websocketTaskStatus)) {
+          dispatch({ type: "SET_PROCESSING", payload: false })
+        }
+
+        if (!isDuplicateMessage(websocketErrorMessage, "agent-error")) {
+          dispatch({
+            type: "ADD_MESSAGE",
+            payload: {
+              id: generateMessageId("msg-error"),
+              role: "assistant",
+              content: `${t('agent.logs.event.messages.errorPrefix')} ${websocketErrorMessage}`,
+              timestamp: message.timestamp,
+              status: "failed",
+            },
+          })
+        }
         break
 
       case "message_received":
@@ -3775,7 +3986,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
     console.log('🚀 sendMessage called:', { message, files: files?.map(f => f.name), taskId: state.taskId })
 
     const targetTaskId = typeof config?.targetTaskId === 'number' ? config.targetTaskId : null
-    if (!state.taskId && targetTaskId) {
+    if (targetTaskId !== null && state.taskId !== targetTaskId) {
       setPendingMessage({ message, files, targetTaskId })
 
       if (!isDuplicateMessage(message, 'user-message', config?.force)) {
@@ -3915,7 +4126,7 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
           const newTask: Task = {
             id: newTaskId.toString(),
             title: taskData.title,
-            status: taskData.status,
+            status: normalizeTaskStatus(taskData.status) || "pending",
             description: taskData.description || message,
             createdAt: taskData.created_at,
             updatedAt: taskData.updated_at,
@@ -3930,6 +4141,8 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             executionMode: taskData.execution_mode,
             isDag: taskData.is_dag,
             agentId: taskData.agent_id,
+            agentName: taskData.agent_name,
+            agentLogoUrl: taskData.agent_logo_url,
             waitingQuestion: taskData.waiting_question,
             waitingInteractions: normalizeInteractions(taskData.waiting_interactions),
           }
@@ -3978,12 +4191,18 @@ export function AppProvider({ children, token }: { children: React.ReactNode; to
             })
           }
         } else {
-          console.error('Failed to create task:', response.statusText)
-          return
+          const parsed = await parseApiResponse(response)
+          const errorMessage = getApiErrorMessage(
+            response,
+            parsed,
+            t("builds.list.chat.sendFailed") || "Failed to create task",
+          )
+          console.error('Failed to create task:', errorMessage)
+          throw new Error(errorMessage)
         }
       } catch (error) {
         console.error('Error creating task:', error)
-        return
+        throw error
       }
     }
 

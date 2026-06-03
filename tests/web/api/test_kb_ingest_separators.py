@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from xagent.config import WEB_CRAWL_TLS_IMPERSONATE
@@ -18,6 +18,11 @@ from xagent.core.tools.core.RAG_tools.core.schemas import (
     WebIngestionResult,
 )
 from xagent.web.api.kb import kb_router
+from xagent.web.models.background_job import (
+    BackgroundJob,
+    BackgroundJobStatus,
+    BackgroundJobType,
+)
 from xagent.web.models.database import get_db
 
 
@@ -859,6 +864,205 @@ def test_ingest_returns_413_when_file_exceeds_limit(app_with_kb, monkeypatch):
 
     assert response.status_code == 413
     assert "maximum limit" in response.json()["detail"].lower()
+
+
+def test_ingest_job_uses_staged_snapshot_in_payload(app_with_kb):
+    captured_payload = {}
+
+    def fake_create_background_job(db, *, payload, **kwargs):
+        captured_payload.update(payload)
+        return BackgroundJob(
+            id="job-1",
+            user_id=1,
+            job_type=BackgroundJobType.KB_INGEST_DOCUMENT.value,
+            queue="kb_ingest",
+            status=BackgroundJobStatus.ENQUEUED.value,
+            payload=payload,
+            progress={"message": "Queued", "completed": 0, "total": 1},
+            attempts=0,
+            max_attempts=3,
+        )
+
+    async def fake_enqueue(db, job):
+        return job
+
+    metadata_store = MagicMock()
+    metadata_store.save_collection_config = AsyncMock()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with (
+            patch("xagent.web.api.kb.get_upload_path") as mock_path,
+            patch(
+                "xagent.web.api.kb._ensure_background_job_queue_available_async",
+                new=AsyncMock(),
+            ),
+            patch("xagent.web.api.kb.get_collection_sync", side_effect=ValueError),
+            patch("xagent.web.api.kb.get_metadata_store", return_value=metadata_store),
+            patch(
+                "xagent.web.api.kb.get_non_terminal_background_job_by_idempotency_key",
+                return_value=None,
+            ),
+            patch(
+                "xagent.web.api.kb.create_background_job",
+                side_effect=fake_create_background_job,
+            ),
+            patch("xagent.web.api.kb.admit_kb_ingest_target"),
+            patch(
+                "xagent.web.api.kb._enqueue_background_job_or_503_async",
+                side_effect=fake_enqueue,
+            ),
+        ):
+            mock_path.side_effect = _ingest_test_get_upload_path_side_effect(tmpdir)
+            client = TestClient(app_with_kb)
+            response = client.post(
+                "/api/kb/ingest/jobs",
+                data={"collection": "test_coll"},
+                files={"file": ("test.txt", io.BytesIO(b"hello"), "text/plain")},
+            )
+
+        assert response.status_code == 202
+        source_path = Path(captured_payload["source_path"])
+        target_path = Path(captured_payload["target_path"])
+        assert source_path != target_path
+        assert ".background-ingest" in source_path.parts
+        assert source_path.read_bytes() == b"hello"
+        assert not target_path.exists()
+        assert captured_payload["file_size"] == 5
+        assert captured_payload["file_id"]
+        assert captured_payload["generation_id"]
+        assert (
+            captured_payload["file_sha256"]
+            == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        )
+
+
+def test_ingest_web_job_payload_records_new_collection_state(app_with_kb):
+    captured_payload = {}
+
+    def fake_create_background_job(db, *, payload, **kwargs):
+        captured_payload.update(payload)
+        return BackgroundJob(
+            id="job-1",
+            user_id=1,
+            job_type=BackgroundJobType.KB_INGEST_WEB.value,
+            queue="kb_ingest",
+            status=BackgroundJobStatus.ENQUEUED.value,
+            payload=payload,
+            progress={"message": "Queued", "completed": 0, "total": 1},
+            attempts=0,
+            max_attempts=3,
+        )
+
+    async def fake_enqueue(db, job):
+        return job
+
+    metadata_store = MagicMock()
+    metadata_store.save_collection_config = AsyncMock()
+
+    with (
+        patch(
+            "xagent.web.api.kb._ensure_background_job_queue_available_async",
+            new=AsyncMock(),
+        ),
+        patch("xagent.web.api.kb.get_collection_sync", side_effect=ValueError),
+        patch("xagent.web.api.kb.get_metadata_store", return_value=metadata_store),
+        patch(
+            "xagent.core.tools.core.RAG_tools.storage.factory.get_metadata_store",
+            return_value=metadata_store,
+        ),
+        patch(
+            "xagent.web.api.kb.get_non_terminal_background_job_by_idempotency_key",
+            return_value=None,
+        ),
+        patch(
+            "xagent.web.api.kb.create_background_job",
+            side_effect=fake_create_background_job,
+        ),
+        patch(
+            "xagent.web.api.kb._enqueue_background_job_or_503_async",
+            side_effect=fake_enqueue,
+        ),
+    ):
+        client = TestClient(app_with_kb)
+        response = client.post(
+            "/api/kb/ingest-web/jobs",
+            data={
+                "collection": "web_jobs_new_collection",
+                "start_url": "https://example.com",
+            },
+        )
+
+    assert response.status_code == 202
+    assert captured_payload["collection_existed_before"] is False
+
+
+def test_ingest_web_job_cleans_new_collection_metadata_when_enqueue_fails(
+    app_with_kb,
+):
+    def fake_create_background_job(db, *, payload, **kwargs):
+        return BackgroundJob(
+            id="job-1",
+            user_id=1,
+            job_type=BackgroundJobType.KB_INGEST_WEB.value,
+            queue="kb_ingest",
+            status=BackgroundJobStatus.PENDING.value,
+            payload=payload,
+            progress={"message": "Queued", "completed": 0, "total": 1},
+            attempts=0,
+            max_attempts=3,
+        )
+
+    async def fake_enqueue(db, job):
+        raise HTTPException(
+            status_code=503, detail="Background job queue is unavailable"
+        )
+
+    metadata_store = MagicMock()
+    metadata_store.save_collection_config = AsyncMock()
+    metadata_store.delete_collection_metadata = AsyncMock(
+        return_value={"metadata_rows": 0, "config_rows": 1}
+    )
+
+    with (
+        patch(
+            "xagent.web.api.kb._ensure_background_job_queue_available_async",
+            new=AsyncMock(),
+        ),
+        patch("xagent.web.api.kb.get_collection_sync", side_effect=ValueError),
+        patch("xagent.web.api.kb.get_metadata_store", return_value=metadata_store),
+        patch(
+            "xagent.core.tools.core.RAG_tools.storage.factory.get_metadata_store",
+            return_value=metadata_store,
+        ),
+        patch(
+            "xagent.web.api.kb.get_non_terminal_background_job_by_idempotency_key",
+            return_value=None,
+        ),
+        patch(
+            "xagent.web.api.kb.create_background_job",
+            side_effect=fake_create_background_job,
+        ),
+        patch(
+            "xagent.web.api.kb._enqueue_background_job_or_503_async",
+            side_effect=fake_enqueue,
+        ),
+    ):
+        client = TestClient(app_with_kb)
+        response = client.post(
+            "/api/kb/ingest-web/jobs",
+            data={
+                "collection": "web_jobs_enqueue_failure",
+                "start_url": "https://example.com",
+            },
+        )
+
+    assert response.status_code == 503
+    metadata_store.delete_collection_metadata.assert_awaited_once_with(
+        collection_name="web_jobs_enqueue_failure",
+        user_id=1,
+        is_admin=False,
+        delete_orphaned_metadata=True,
+    )
 
 
 def test_ingest_separators_invalid_json_request_succeeds_uses_default(

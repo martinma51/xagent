@@ -13,7 +13,7 @@ import re
 import warnings as py_warnings
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set
 
 import pyarrow as pa  # type: ignore
 from lancedb.db import DBConnection
@@ -39,9 +39,9 @@ from ..core.schemas import (
 from ..LanceDB.model_tag_utils import embeddings_table_name
 from ..LanceDB.schema_manager import _safe_close_table
 from ..management.status import (
-    clear_ingestion_status,
-    load_ingestion_status,
-    write_ingestion_status,
+    _clear_ingestion_status_impl,
+    _load_ingestion_status_impl,
+    _write_ingestion_status_impl,
 )
 from ..storage.factory import get_metadata_store, get_vector_index_store
 from ..utils.lancedb_query_utils import _safe_count_rows, list_table_names
@@ -52,7 +52,16 @@ from .collection_manager import delete_collection_metadata_sync
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from ..kb import KBCoreManagementCompatibilityFacade
+
 DEFAULT_BATCH_SIZE = DEFAULT_LANCEDB_SCAN_BATCH_SIZE
+
+
+def _get_management_facade() -> "KBCoreManagementCompatibilityFacade":
+    from ..kb import get_kb_coordinator
+
+    return get_kb_coordinator().management
 
 
 def _extract_user_id_from_source_path(source_path: Optional[str]) -> Optional[int]:
@@ -477,7 +486,7 @@ def _collect_document_ids(
         )
         doc_ids.update(embed_docs.keys())
 
-    for status_entry in load_ingestion_status(collection=collection):
+    for status_entry in _load_ingestion_status_impl(collection=collection):
         raw_doc = status_entry.get("doc_id")
         if isinstance(raw_doc, str):
             doc_ids.add(raw_doc)
@@ -562,6 +571,19 @@ async def _load_collection_ingestion_configs(
 
 
 async def list_collections(
+    user_id: Optional[int] = None,
+    is_admin: Optional[bool] = None,
+    force_realtime: bool = False,
+) -> ListCollectionsResult:
+    """List all knowledge base collections through the coordinator facade."""
+    return await _get_management_facade().list_collections(
+        user_id=user_id,
+        is_admin=is_admin,
+        force_realtime=force_realtime,
+    )
+
+
+async def _list_collections_impl(
     user_id: Optional[int] = None,
     is_admin: Optional[bool] = None,
     force_realtime: bool = False,
@@ -953,6 +975,23 @@ def get_document_stats(
     user_id: Optional[int] = None,
     is_admin: bool = False,
 ) -> DocumentStatsResult:
+    """Return document statistics through the coordinator facade."""
+    return _get_management_facade().get_document_stats(
+        collection=collection,
+        doc_id=doc_id,
+        model_tag=model_tag,
+        user_id=user_id,
+        is_admin=is_admin,
+    )
+
+
+def _get_document_stats_impl(
+    collection: str,
+    doc_id: str,
+    model_tag: Optional[str] = None,
+    user_id: Optional[int] = None,
+    is_admin: bool = False,
+) -> DocumentStatsResult:
     """Return statistics for a single document within a collection.
 
     Args:
@@ -1039,7 +1078,7 @@ def get_document_stats(
 
     # Load ingestion status
     status_record = None
-    status_entries = load_ingestion_status(collection=collection, doc_id=doc_id)
+    status_entries = _load_ingestion_status_impl(collection=collection, doc_id=doc_id)
     if status_entries:
         status_record = status_entries[-1]
 
@@ -1102,6 +1141,19 @@ def get_document_stats(
 
 
 def list_documents(
+    collection: str,
+    user_id: Optional[int] = None,
+    is_admin: bool = False,
+) -> DocumentListResult:
+    """List documents for a collection through the coordinator facade."""
+    return _get_management_facade().list_documents(
+        collection=collection,
+        user_id=user_id,
+        is_admin=is_admin,
+    )
+
+
+def _list_documents_impl(
     collection: str,
     user_id: Optional[int] = None,
     is_admin: bool = False,
@@ -1174,7 +1226,8 @@ def list_documents(
 
     # Load status records
     status_records = {
-        entry["doc_id"]: entry for entry in load_ingestion_status(collection=collection)
+        entry["doc_id"]: entry
+        for entry in _load_ingestion_status_impl(collection=collection)
     }
 
     # Combine all doc_ids from various sources
@@ -1238,6 +1291,19 @@ def list_documents(
 
 
 def delete_collection(
+    collection: str,
+    user_id: Optional[int] = None,
+    is_admin: bool = False,
+) -> CollectionOperationResult:
+    """Delete a collection through the coordinator facade."""
+    return _get_management_facade().delete_collection(
+        collection=collection,
+        user_id=user_id,
+        is_admin=is_admin,
+    )
+
+
+def _delete_collection_impl(
     collection: str,
     user_id: Optional[int] = None,
     is_admin: bool = False,
@@ -1419,6 +1485,18 @@ def delete_collection(
 def delete_document(
     collection: str, doc_id: str, user_id: int, is_admin: bool = False
 ) -> DocumentOperationResult:
+    """Delete a document through the coordinator facade."""
+    return _get_management_facade().delete_document(
+        collection=collection,
+        doc_id=doc_id,
+        user_id=user_id,
+        is_admin=is_admin,
+    )
+
+
+def _delete_document_impl(
+    collection: str, doc_id: str, user_id: int, is_admin: bool = False
+) -> DocumentOperationResult:
     """Delete a document and all its associated data.
 
     This performs a cascade delete of the document's parses, chunks,
@@ -1499,7 +1577,7 @@ def delete_document(
             user_id=user_id,
             is_admin=is_admin,
         )
-        clear_ingestion_status(
+        _clear_ingestion_status_impl(
             collection,
             doc_id,
             user_id=None if authorized_via_legacy_source_path else user_id,
@@ -1531,10 +1609,22 @@ def delete_document(
 def retry_document(
     collection: str, doc_id: str, user_id: int, is_admin: bool = False
 ) -> DocumentOperationResult:
+    """Mark a document for retry through the coordinator facade."""
+    return _get_management_facade().retry_document(
+        collection=collection,
+        doc_id=doc_id,
+        user_id=user_id,
+        is_admin=is_admin,
+    )
+
+
+def _retry_document_impl(
+    collection: str, doc_id: str, user_id: int, is_admin: bool = False
+) -> DocumentOperationResult:
     """Mark a document for retry by resetting its status to pending."""
 
     try:
-        write_ingestion_status(
+        _write_ingestion_status_impl(
             collection,
             doc_id,
             status=DocumentProcessingStatus.PENDING.value,
@@ -1572,11 +1662,28 @@ def cancel_document(
     is_admin: bool = False,
     reason: Optional[str] = None,
 ) -> DocumentOperationResult:
+    """Mark a document as cancelled through the coordinator facade."""
+    return _get_management_facade().cancel_document(
+        collection=collection,
+        doc_id=doc_id,
+        user_id=user_id,
+        is_admin=is_admin,
+        reason=reason,
+    )
+
+
+def _cancel_document_impl(
+    collection: str,
+    doc_id: str,
+    user_id: int,
+    is_admin: bool = False,
+    reason: Optional[str] = None,
+) -> DocumentOperationResult:
     """Mark a document ingestion process as cancelled."""
 
     message = reason or "Cancelled by user."
     try:
-        write_ingestion_status(
+        _write_ingestion_status_impl(
             collection,
             doc_id,
             status=DocumentProcessingStatus.FAILED.value,
@@ -1606,6 +1713,21 @@ def cancel_document(
 
 
 def cancel_collection(
+    collection: str,
+    reason: Optional[str] = None,
+    user_id: Optional[int] = None,
+    is_admin: bool = False,
+) -> CollectionOperationResult:
+    """Mark all documents in a collection as cancelled through the facade."""
+    return _get_management_facade().cancel_collection(
+        collection=collection,
+        reason=reason,
+        user_id=user_id,
+        is_admin=is_admin,
+    )
+
+
+def _cancel_collection_impl(
     collection: str,
     reason: Optional[str] = None,
     user_id: Optional[int] = None,
@@ -1646,7 +1768,7 @@ def cancel_collection(
 
     for doc_id in doc_ids:
         try:
-            write_ingestion_status(
+            _write_ingestion_status_impl(
                 collection=collection,
                 doc_id=doc_id,
                 status=DocumentProcessingStatus.FAILED.value,
@@ -1695,6 +1817,14 @@ def cancel_collection(
 
 
 def get_document_status(collection: str, doc_id: str) -> Dict[str, Any]:
+    """Get document status through the coordinator facade."""
+    return _get_management_facade().get_document_status(
+        collection=collection,
+        doc_id=doc_id,
+    )
+
+
+def _get_document_status_impl(collection: str, doc_id: str) -> Dict[str, Any]:
     """Get the current ingestion status for a document.
 
     Args:
@@ -1705,7 +1835,9 @@ def get_document_status(collection: str, doc_id: str) -> Dict[str, Any]:
         Dictionary with status information, or empty dict if not found.
     """
     try:
-        status_records = load_ingestion_status(collection=collection, doc_id=doc_id)
+        status_records = _load_ingestion_status_impl(
+            collection=collection, doc_id=doc_id
+        )
         if status_records:
             return status_records[0]
         return {}

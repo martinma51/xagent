@@ -29,12 +29,15 @@ from .api.custom_api import custom_api_router
 from .api.decks import router as decks_router
 from .api.images import router as images_router
 from .api.files import file_router
+from .api.jobs import jobs_router
 from .api.kb import kb_router
 from .api.mcp import mcp_router
+from .api.me import router as me_router
 from .api.memory import MemoryManagementRouter
 from .api.model import model_router
 from .api.monitor import monitor_router
 from .api.progress_ws import progress_ws_router
+from .api.skill_hub import router as skill_hub_router
 from .api.skills import router as skills_router
 from .api.slide_layouts import router as slide_layouts_router
 from .api.slide_templates import router as slide_templates_router
@@ -444,7 +447,9 @@ app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(cloud_router)
 app.include_router(file_router)
+app.include_router(jobs_router)
 app.include_router(kb_router)
+app.include_router(me_router)
 app.include_router(model_router)
 app.include_router(ws_router)
 app.include_router(monitor_router)
@@ -456,6 +461,7 @@ app.include_router(tools_router)
 app.include_router(admin_users_router)
 app.include_router(admin_mcp_router)
 app.include_router(skills_router)
+app.include_router(skill_hub_router)
 app.include_router(system_router)
 app.include_router(templates_router)
 app.include_router(slide_templates_router)

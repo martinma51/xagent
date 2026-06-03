@@ -189,6 +189,13 @@ export const getNavigationGroupsForUser = (user: any): NavigationGroup[] => [
         color: "text-purple-400"
       },
       {
+        name: "Skill Hub",
+        nameKey: "nav.skillHub",
+        href: "/skill-hub",
+        icon: Box,
+        color: "text-violet-400"
+      },
+      {
         name: "Create with AI",
         nameKey: "nav.createWithAi",
         href: "__create_with_ai__",

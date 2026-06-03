@@ -20,6 +20,7 @@ from ...config import (
     get_file_delivery_accel_redirect_prefix,
     get_file_delivery_redirect_enabled,
     get_file_delivery_signed_url_ttl_seconds,
+    get_storage_root,
     get_uploads_dir,
 )
 from ...core.file_storage.factory import get_file_storage
@@ -45,7 +46,7 @@ from ..services.managed_file_ref import (
     ManagedFileRef,
     guess_media_type,
 )
-from ..services.uploaded_file_store import UploadedFileStore
+from ..services.uploaded_file_store import UploadedFileStore, delete_pptx_pdf_cache
 from .legacy_file import (
     infer_user_id_from_legacy_path,
     is_valid_uuid,
@@ -551,6 +552,132 @@ def _pptx_text_preview(path: Path) -> str:
     return "\n\n".join(blocks)
 
 
+def _pptx_pdf_cache_path(pptx_path: Path, file_id: Optional[str] = None) -> Path:
+    """Return the on-disk cache path for a converted PDF preview.
+
+    Caches are stored in ``<storage_root>/pptx_pdf_cache/`` — a dedicated
+    directory outside the uploads tree.  Keeping them out of uploads:
+
+    * prevents reconcile / backfill from treating ``.pptx.preview.pdf``
+      sidecars as normal user-uploaded files;
+    * avoids leaking derived content after a source upload is deleted
+      (delete_file() explicitly removes the cache entry by file_id);
+    * lets the uploads tree stay clean — only files written by users or
+      the upload endpoint live there.
+
+    For registered UUID files the cache key is the ``file_id``, which lets
+    ``delete_file()`` remove it with a single unlink.  For legacy / non-UUID
+    paths (no lifecycle management) we fall back to a SHA-256 prefix of the
+    resolved source path — entries there age out naturally.
+    """
+    import hashlib
+
+    cache_dir = get_storage_root() / "pptx_pdf_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    if file_id:
+        return cache_dir / f"{file_id}.preview.pdf"
+    path_key = hashlib.sha256(str(pptx_path.resolve()).encode()).hexdigest()[:24]
+    return cache_dir / f"{path_key}.preview.pdf"
+
+
+async def _convert_pptx_to_pdf(
+    pptx_path: Path, file_id: Optional[str] = None
+) -> Optional[Path]:
+    """Convert a .pptx to PDF via LibreOffice with on-disk caching.
+
+    Returns the path to the cached PDF on success, or ``None`` when soffice
+    isn't available / conversion failed. The caller decides whether to
+    surface a 503 (so the frontend can fall back) or just keep going.
+
+    The fact that this can return ``None`` is the whole point of the
+    preview-pdf endpoint: on developer machines without LibreOffice we
+    don't break the UX — we let the frontend fall back to its canvas
+    renderer. Production images (Docker) pre-install libreoffice so this
+    path always succeeds there.
+
+    ``file_id`` is forwarded to ``_pptx_pdf_cache_path`` so the cache entry
+    lands in the managed cache directory (keyed by file_id) rather than as
+    a sidecar next to the source file.
+    """
+    if pptx_path.suffix.lower() != ".pptx":
+        return None
+
+    cache_path = _pptx_pdf_cache_path(pptx_path, file_id)
+    try:
+        if (
+            cache_path.exists()
+            and cache_path.stat().st_mtime >= pptx_path.stat().st_mtime
+        ):
+            return cache_path
+    except OSError:
+        pass
+
+    import tempfile
+
+    try:
+        # Pin the temp dir to the same directory as `cache_path` so the final
+        # rename is a single intra-filesystem syscall. Without `dir=...`,
+        # `tempfile.TemporaryDirectory()` uses the system default (typically
+        # /tmp), which on Docker/production layouts is a different mount than
+        # the uploads volume — the later `replace()` would then fail with
+        # EXDEV (Invalid cross-device link). Per PR #542 review.
+        with tempfile.TemporaryDirectory(dir=cache_path.parent) as temp_dir:
+            proc = await asyncio.create_subprocess_exec(
+                "soffice",
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                temp_dir,
+                str(pptx_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            try:
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                logger.warning("pptx→pdf conversion timed out for %s", pptx_path)
+                return None
+            if proc.returncode != 0:
+                logger.warning(
+                    "soffice exited %s for %s: %s",
+                    proc.returncode,
+                    pptx_path,
+                    stderr.decode("utf-8", "replace")[:200],
+                )
+                return None
+            pdf_files = list(Path(temp_dir).glob("*.pdf"))
+            if not pdf_files:
+                return None
+            # The PDF is already fully written and closed inside the temp dir,
+            # and the temp dir lives in the same filesystem as `cache_path`
+            # (see `dir=` above), so `replace()` is a single atomic rename.
+            # No `.tmp` intermediate needed — that previous two-step dance
+            # could leave orphans if a concurrent request raced. Per PR #542
+            # review.
+            try:
+                pdf_files[0].replace(cache_path)
+            except OSError as exc:
+                logger.warning(
+                    "Failed to cache pptx preview PDF at %s: %s", cache_path, exc
+                )
+                return None
+            return cache_path
+    except FileNotFoundError:
+        # soffice binary is missing — this is the expected "fallback" path
+        # on developer machines. Log once at INFO so it doesn't spam.
+        logger.info(
+            "soffice not on PATH; .pptx PDF previews will fall back to "
+            "client-side rendering"
+        )
+        return None
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pptx→pdf conversion failed for %s: %s", pptx_path, exc)
+        return None
+
+
 @file_router.post("/upload")
 async def upload_file(
     file: UploadFile | None = File(None),
@@ -995,6 +1122,87 @@ async def preview_file(
     )
 
 
+@file_router.get("/preview-pdf/{file_id:path}", response_model=None)
+async def preview_pptx_as_pdf(
+    file_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return a PDF rendering of a .pptx for high-fidelity in-browser preview.
+
+    The frontend hits this endpoint first; if it succeeds it shows the PDF
+    in an ``<iframe>`` (vector, text-selectable, perfect font metrics).
+    On a 503 response — meaning the server doesn't have LibreOffice on
+    PATH — the frontend falls back to the existing ``pptxviewjs`` canvas
+    renderer so the UX still works on developer machines without soffice
+    installed.
+
+    Mirrors the durable-storage restore path that ``/preview`` uses: for
+    files whose local copy was reaped but whose ``storage_key`` is still in
+    durable storage, we materialize before conversion (returning 409 on
+    checksum mismatch, 503 on durable backend failure — same semantics as
+    ``/preview``). Without this, durable-only ``.pptx`` files would 404 here
+    and silently fall back to the canvas renderer, which is exactly the
+    UX regression flagged in PR #542 review.
+    """
+    file_record, full_path, owner_user_id = _resolve_file_path(
+        db, file_id, _user_id_value(user)
+    )
+
+    # Resolve the local .pptx path. If the file is backed by durable
+    # storage and not currently on disk, restore it first.
+    pptx_path = full_path
+    if file_record:
+        _check_file_access(file_record, user)
+        file_name = str(file_record.filename)
+        _ensure_under_uploads(full_path, owner_user_id)
+        file_ref = ManagedFileRef(file_record)
+        if file_ref.has_durable_object:
+            try:
+                pptx_path = file_ref.materialize()
+            except DurableObjectIntegrityError as exc:
+                raise _file_integrity_failed() from exc
+            except DurableStorageOperationError as exc:
+                raise _durable_storage_unavailable() from exc
+            except DurableObjectMissingError:
+                # Durable record points at nothing; fall back to whatever
+                # is on disk (or 404 below if it's gone too).
+                pptx_path = file_ref.local_path
+    else:
+        if owner_user_id != _user_id_value(user) and not _is_admin_user(user):
+            raise HTTPException(status_code=403, detail="Access denied")
+        file_name = full_path.name
+        _ensure_under_uploads(full_path, owner_user_id)
+
+    if pptx_path is None or not pptx_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if pptx_path.suffix.lower() != ".pptx":
+        raise HTTPException(
+            status_code=400, detail="preview-pdf only supports .pptx files"
+        )
+
+    # Pass the UUID file_id so the cache entry lands in the managed
+    # cache directory (keyed by file_id) rather than as a sidecar next to
+    # the source file.  Legacy / non-UUID ids pass None and fall back to
+    # the path-hash key.
+    managed_file_id = file_id if is_valid_uuid(file_id) else None
+    pdf_path = await _convert_pptx_to_pdf(pptx_path, file_id=managed_file_id)
+    if pdf_path is None:
+        # Distinct 503 lets the frontend fall back gracefully instead of
+        # showing an error banner.
+        raise HTTPException(
+            status_code=503,
+            detail="LibreOffice unavailable; client should fall back to canvas renderer",
+        )
+
+    return FileResponse(
+        path=str(pdf_path),
+        filename=Path(file_name).stem + ".pdf",
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline"},
+    )
+
+
 @file_router.get("/public/download/{file_id:path}", response_model=None)
 async def public_download_file(
     file_id: str,
@@ -1220,6 +1428,12 @@ async def delete_file(
             logger.warning("Failed to clean up deleted local file: %s", file_path)
     elif file_path.exists() and file_path.is_file():
         file_path.unlink()
+
+    # Remove any server-side PDF preview cache so derived content doesn't
+    # outlive the source upload.  Uses the same helper as UploadedFileStore.delete()
+    # so this HTTP route and every other deletion path (reconcile, orphan cleanup)
+    # behave identically.  Non-UUID ids are silently ignored by the helper.
+    delete_pptx_pdf_cache(file_id)
 
     return {
         "success": True,

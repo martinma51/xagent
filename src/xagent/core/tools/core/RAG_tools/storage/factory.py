@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Optional
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from .contracts import (
     IngestionStatusStore,
@@ -35,6 +38,35 @@ from .vector_backend import (
 )
 
 logger = logging.getLogger(__name__)
+_storage_shim_override: ContextVar[Any] = ContextVar(
+    "xagent_kb_storage_shim_override",
+    default=None,
+)
+
+if TYPE_CHECKING:
+    from ..kb.storage_shim import KBStorageShimCompatibilityFacade
+
+
+def get_bound_storage_shim_for_current_context() -> (
+    KBStorageShimCompatibilityFacade | None
+):
+    """Return the storage shim already bound to this execution context."""
+    return cast(
+        "KBStorageShimCompatibilityFacade | None",
+        _storage_shim_override.get(),
+    )
+
+
+@contextmanager
+def bind_storage_shim_for_current_context(
+    storage_shim: KBStorageShimCompatibilityFacade,
+) -> Iterator[None]:
+    """Route legacy storage accessors through a coordinator-owned shim."""
+    token = _storage_shim_override.set(storage_shim)
+    try:
+        yield
+    finally:
+        _storage_shim_override.reset(token)
 
 
 class StorageFactory:
@@ -95,6 +127,11 @@ class StorageFactory:
             self._prompt_template_store = None
             self._main_pointer_store = None
             self._coordinator = None
+
+        # Keep semantic KB coordinator state aligned with factory-backed stores.
+        from ..kb import reset_kb_coordinator_for_tests
+
+        reset_kb_coordinator_for_tests()
 
     # --- VectorIndexStore ---
 
@@ -217,19 +254,16 @@ class StorageFactory:
 # Backward Compatibility Functions
 # ============================================================================
 
-# Module-level lock for backward compatibility functions
-_compat_lock = threading.Lock()
-_default_factory: Optional[StorageFactory] = None
 
+def _get_storage_shim() -> KBStorageShimCompatibilityFacade:
+    """Return the coordinator-owned low-level storage compatibility facade."""
+    override = get_bound_storage_shim_for_current_context()
+    if override is not None:
+        return override
 
-def _get_default_factory() -> StorageFactory:
-    """Get or create default factory instance (thread-safe)."""
-    global _default_factory
-    if _default_factory is None:
-        with _compat_lock:
-            if _default_factory is None:
-                _default_factory = StorageFactory.get_factory()
-    return _default_factory
+    from ..kb import get_kb_coordinator
+
+    return get_kb_coordinator().storage_shim
 
 
 def reset_kb_write_coordinator() -> None:
@@ -237,7 +271,7 @@ def reset_kb_write_coordinator() -> None:
 
     Deprecated: Use StorageFactory.get_factory().reset_all() instead.
     """
-    _get_default_factory().reset_all()
+    _get_storage_shim().reset_kb_write_coordinator()
 
 
 def reset_rag_storage_for_tests() -> None:
@@ -257,23 +291,7 @@ def reset_rag_storage_for_tests() -> None:
         ConfigurationError: If ``XAGENT_VECTOR_BACKEND`` is set to an unknown value
             (same as :func:`~.vector_backend.get_configured_vector_backend`).
     """
-    backend = get_configured_vector_backend()
-    if backend is VectorBackend.LANCEDB:
-        from xagent.providers.vector_store.lancedb import clear_connection_cache
-
-        clear_connection_cache()
-    elif backend is VectorBackend.MILVUS:
-        # Future: clear Milvus client pools / connection cache when implemented.
-        pass
-    elif backend is VectorBackend.QDRANT:
-        # Future: clear Qdrant client singleton when implemented.
-        pass
-    reset_kb_write_coordinator()
-
-    # Clear global collection locks to prevent test-to-test lock contamination
-    from xagent.core.tools.core.RAG_tools.management import collection_manager
-
-    collection_manager.reset_locks_for_testing()
+    _get_storage_shim().reset_rag_storage_for_tests()
     logger.debug("[TEST_RESET] Global collection locks reset via public helper")
 
 
@@ -282,7 +300,7 @@ def get_kb_write_coordinator() -> KBWriteCoordinator:
 
     Deprecated: Use StorageFactory.get_factory().get_kb_write_coordinator() instead.
     """
-    return _get_default_factory().get_kb_write_coordinator()
+    return _get_storage_shim().get_kb_write_coordinator()
 
 
 def get_metadata_store() -> MetadataStore:
@@ -290,7 +308,7 @@ def get_metadata_store() -> MetadataStore:
 
     Deprecated: Use StorageFactory.get_factory().get_metadata_store() instead.
     """
-    return _get_default_factory().get_metadata_store()
+    return _get_storage_shim().get_metadata_store()
 
 
 def get_vector_index_store() -> VectorIndexStore:
@@ -298,7 +316,7 @@ def get_vector_index_store() -> VectorIndexStore:
 
     Deprecated: Use StorageFactory.get_factory().get_vector_index_store() instead.
     """
-    return _get_default_factory().get_vector_index_store()
+    return _get_storage_shim().get_vector_index_store()
 
 
 def get_vector_store_raw_connection() -> Any:
@@ -311,7 +329,7 @@ def get_vector_store_raw_connection() -> Any:
     Returns:
         The object returned by :meth:`VectorIndexStore.get_raw_connection`.
     """
-    return get_vector_index_store().get_raw_connection()
+    return _get_storage_shim().get_vector_store_raw_connection()
 
 
 def get_ingestion_status_store() -> IngestionStatusStore:
@@ -320,7 +338,7 @@ def get_ingestion_status_store() -> IngestionStatusStore:
     Returns:
         LanceDBIngestionStatusStore instance.
     """
-    return _get_default_factory().get_ingestion_status_store()
+    return _get_storage_shim().get_ingestion_status_store()
 
 
 def get_prompt_template_store() -> PromptTemplateStore:
@@ -329,7 +347,7 @@ def get_prompt_template_store() -> PromptTemplateStore:
     Returns:
         LanceDBPromptTemplateStore instance.
     """
-    return _get_default_factory().get_prompt_template_store()
+    return _get_storage_shim().get_prompt_template_store()
 
 
 def get_main_pointer_store() -> MainPointerStore:
@@ -338,7 +356,7 @@ def get_main_pointer_store() -> MainPointerStore:
     Returns:
         LanceDBMainPointerStore instance.
     """
-    return _get_default_factory().get_main_pointer_store()
+    return _get_storage_shim().get_main_pointer_store()
 
 
 # ============================================================================

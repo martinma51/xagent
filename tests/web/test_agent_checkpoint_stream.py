@@ -18,11 +18,13 @@ from xagent.core.agent.trace import (
 )
 from xagent.web.api.trace_handlers import DatabaseTraceHandler
 from xagent.web.api.websocket import (
+    _agent_outbound_event_type,
     _is_agent_checkpoint_data,
     _is_duplicate_user_message_turn,
     _persist_agent_outbound_event,
     create_final_answer_stream_event,
     create_stream_event,
+    make_agent_outbound_handler,
     send_historical_data_as_stream,
 )
 from xagent.web.api.ws_trace_handlers import (
@@ -76,6 +78,55 @@ def test_action_llm_error_maps_to_llm_call_failed() -> None:
     assert get_event_type_mapping(event) == "llm_call_failed"
 
 
+def test_workforce_delegation_summary_maps_to_public_stream_event() -> None:
+    event = TraceEvent(
+        TraceEventType(TraceScope.TASK, TraceAction.UPDATE, TraceCategory.GENERAL),
+        task_id="365",
+        data={
+            "event_type": "workforce_delegation_start",
+            "status": "start",
+            "agent_id": 12,
+            "agent_name": "Researcher",
+            "worker_alias": "Research",
+            "worker_task_id": "agent_12_abcd1234",
+            "messages": [{"role": "user", "content": "raw prompt"}],
+        },
+    )
+
+    stream_event = WebSocketTraceHandler(365)._convert_trace_event_to_stream_event(
+        event
+    )
+
+    assert stream_event is not None
+    assert stream_event["event_type"] == "workforce_delegation_start"
+    assert stream_event["data"]["worker_alias"] == "Research"
+    assert stream_event["data"]["worker_task_id"] == "agent_12_abcd1234"
+    assert "messages" not in stream_event["data"]
+    assert "event_type" not in stream_event["data"]
+
+
+def test_non_task_update_event_with_delegation_payload_is_not_promoted() -> None:
+    event = TraceEvent(
+        TraceEventType(TraceScope.ACTION, TraceAction.END, TraceCategory.TOOL),
+        task_id="365",
+        step_id="step-1",
+        data={
+            "event_type": "workforce_delegation_end",
+            "tool_name": "agent_12",
+            "output": "worker response",
+        },
+    )
+
+    stream_event = WebSocketTraceHandler(365)._convert_trace_event_to_stream_event(
+        event
+    )
+
+    assert stream_event is not None
+    assert stream_event["event_type"] == "tool_execution_end"
+    assert stream_event["data"]["event_type"] == "workforce_delegation_end"
+    assert stream_event["data"]["output"] == "worker response"
+
+
 def test_historical_stream_identifies_agent_checkpoint_payload() -> None:
     assert _is_agent_checkpoint_data(
         {
@@ -114,6 +165,78 @@ def test_final_answer_stream_event_is_not_trace_event() -> None:
     assert "data" not in event
 
 
+def test_agent_outbound_event_type_separates_progress_from_questions() -> None:
+    assert (
+        _agent_outbound_event_type(
+            {
+                "message": "Still working",
+                "message_type": "progress",
+                "expect_response": False,
+            }
+        )
+        == "agent_progress"
+    )
+    assert (
+        _agent_outbound_event_type(
+            {
+                "message": "Need input",
+                "message_type": "question",
+                "expect_response": False,
+            }
+        )
+        == "agent_message"
+    )
+    assert (
+        _agent_outbound_event_type(
+            {
+                "message": "Need input",
+                "message_type": "info",
+                "expect_response": True,
+            }
+        )
+        == "agent_message"
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_outbound_handler_skips_hidden_messages(monkeypatch) -> None:
+    persisted_calls: list[tuple[int, dict[str, object]]] = []
+    broadcast_calls: list[tuple[dict[str, object], int]] = []
+    to_thread_calls: list[tuple[object, tuple[object, ...]]] = []
+
+    def fake_persist(task_id: int, event: dict[str, object]) -> None:
+        persisted_calls.append((task_id, event))
+
+    async def fake_to_thread(func: object, /, *args: object) -> None:
+        to_thread_calls.append((func, args))
+
+    async def fake_broadcast(event: dict[str, object], task_id: int) -> None:
+        broadcast_calls.append((event, task_id))
+
+    monkeypatch.setattr(
+        "xagent.web.api.websocket._persist_agent_outbound_event", fake_persist
+    )
+    monkeypatch.setattr("xagent.web.api.websocket.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr(
+        "xagent.web.api.websocket.manager.broadcast_to_task", fake_broadcast
+    )
+
+    handler = make_agent_outbound_handler(365)
+    await handler(
+        {
+            "execution_id": "exec-1",
+            "message": "Hidden progress",
+            "message_type": "progress",
+            "expect_response": False,
+            "visible": False,
+        }
+    )
+
+    assert persisted_calls == []
+    assert to_thread_calls == []
+    assert broadcast_calls == []
+
+
 def test_persist_agent_outbound_event_uses_payload_ids(monkeypatch) -> None:
     engine = create_engine("sqlite:///:memory:")
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -146,12 +269,12 @@ def test_persist_agent_outbound_event_uses_payload_ids(monkeypatch) -> None:
     monkeypatch.setattr("xagent.web.api.websocket.get_db", get_test_db)
 
     event = create_stream_event(
-        "agent_message",
+        "agent_progress",
         int(task.id),
         {
             "event_id": "agent-event-1",
             "step_id": "react-step-1",
-            "message": "Need input",
+            "message": "Still working",
             "expect_response": False,
         },
     )
@@ -162,7 +285,7 @@ def test_persist_agent_outbound_event_uses_payload_ids(monkeypatch) -> None:
     try:
         trace_event = db.query(DatabaseTraceEvent).filter_by(task_id=int(task.id)).one()
         assert trace_event.event_id == "agent-event-1"
-        assert trace_event.event_type == "agent_message"
+        assert trace_event.event_type == "agent_progress"
         assert trace_event.step_id == "react-step-1"
     finally:
         db.close()
@@ -520,6 +643,74 @@ async def test_historical_replay_skips_audit_only_trace_events(monkeypatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_historical_replay_promotes_workforce_delegation_summary(
+    monkeypatch,
+) -> None:
+    SessionLocal, db, task = _create_trace_handler_test_task("delegation-history")
+    try:
+        task_id = int(task.id)
+        user_id = int(task.user_id)
+        base_time = datetime(2026, 5, 22, tzinfo=timezone.utc)
+        db.add(
+            DatabaseTraceEvent(
+                task_id=task_id,
+                event_id="delegation-end",
+                event_type="task_update_general",
+                timestamp=base_time + timedelta(seconds=1),
+                data={
+                    "event_type": "workforce_delegation_end",
+                    "status": "end",
+                    "worker_task_id": "agent_123_abcd1234",
+                    "worker_alias": "Writer",
+                    "output": "draft complete",
+                    "messages": [{"role": "user", "content": "raw prompt"}],
+                },
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    def get_test_db() -> Iterator[Session]:
+        session = SessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    sent_events: list[dict] = []
+
+    async def send_personal_message(event: dict, websocket: object) -> None:
+        sent_events.append(event)
+
+    monkeypatch.setattr("xagent.web.models.database.get_db", get_test_db)
+    monkeypatch.setattr("xagent.web.api.websocket.cache_get", lambda *args: None)
+    monkeypatch.setattr(
+        "xagent.web.api.websocket.cache_set", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "xagent.web.api.websocket.manager.send_personal_message",
+        send_personal_message,
+    )
+
+    await send_historical_data_as_stream(
+        websocket=object(),
+        task_id=task_id,
+        user=SimpleNamespace(id=user_id, is_admin=False),
+    )
+
+    delegation_event = next(
+        event for event in sent_events if event.get("event_id") == "delegation-end"
+    )
+    assert delegation_event["event_type"] == "workforce_delegation_end"
+    assert delegation_event["data"]["worker_alias"] == "Writer"
+    assert delegation_event["data"]["worker_task_id"] == "agent_123_abcd1234"
+    assert delegation_event["data"]["output"] == "draft complete"
+    assert "messages" not in delegation_event["data"]
+    assert "event_type" not in delegation_event["data"]
+
+
+@pytest.mark.asyncio
 async def test_historical_replay_skips_checkpoint_rows_before_streaming(
     monkeypatch,
 ) -> None:
@@ -589,6 +780,71 @@ async def test_historical_replay_skips_checkpoint_rows_before_streaming(
     }
     assert "checkpoint-row" not in streamed_event_ids
     assert "llm-row" in streamed_event_ids
+
+
+@pytest.mark.asyncio
+async def test_historical_replay_marks_assistant_chat_history_for_chat_display(
+    monkeypatch,
+) -> None:
+    SessionLocal, db, task = _create_trace_handler_test_task("chat-history-display")
+    try:
+        task_id = int(task.id)
+        user_id = int(task.user_id)
+        db.add(
+            TaskChatMessage(
+                task_id=task_id,
+                user_id=user_id,
+                role="assistant",
+                content="Final answer",
+                message_type="assistant",
+                created_at=datetime(2026, 5, 27, tzinfo=timezone.utc),
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    def get_test_db() -> Iterator[Session]:
+        session = SessionLocal()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    sent_events: list[dict] = []
+
+    async def send_personal_message(event: dict, websocket: object) -> None:
+        sent_events.append(event)
+
+    monkeypatch.setattr("xagent.web.models.database.get_db", get_test_db)
+    monkeypatch.setattr("xagent.web.api.websocket.cache_get", lambda *args: None)
+    monkeypatch.setattr(
+        "xagent.web.api.websocket.cache_set", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        "xagent.web.api.websocket.manager.send_personal_message",
+        send_personal_message,
+    )
+
+    await send_historical_data_as_stream(
+        websocket=object(),
+        task_id=task_id,
+        user=SimpleNamespace(id=user_id, is_admin=False),
+    )
+
+    assistant_events = [
+        event
+        for event in sent_events
+        if event.get("type") == "trace_event"
+        and event.get("event_type") == "agent_message"
+        and event.get("data", {}).get("message") == "Final answer"
+    ]
+    assert len(assistant_events) == 1
+    assistant_data = assistant_events[0]["data"]
+    assert assistant_data["role"] == "assistant"
+    assert assistant_data["expect_response"] is False
+    assert assistant_data["source"] == "chat_history"
+    assert assistant_data["display"] == "chat"
 
 
 @pytest.mark.asyncio

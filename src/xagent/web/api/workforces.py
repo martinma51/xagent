@@ -6,13 +6,18 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth_dependencies import get_current_user
-from ..models.agent import Agent
+from ..models.agent import Agent, is_workforce_generated_manager_agent
 from ..models.database import get_db
 from ..models.user import User
 from ..models.workforce import (
     Workforce,
     WorkforceAgent,
     WorkforceRun,
+)
+from ..services.agent_access import (
+    AccessibleAgent,
+    accessible_agent_permissions,
+    list_accessible_published_agent_items,
 )
 from ..services.workforce_access import (
     can_create_workforce,
@@ -129,14 +134,38 @@ def _serialize_datetime(value: Any) -> str | None:
     return value.isoformat() if value else None
 
 
-def _serialize_agent(agent: Agent) -> dict[str, Any]:
-    return {
+def _serialize_agent(agent: Agent, user: User | None = None) -> dict[str, Any]:
+    item = {
         "id": agent.id,
         "name": agent.name,
         "description": agent.description,
         "logo_url": agent.logo_url,
         "status": _agent_status_value(agent),
     }
+    if user is None:
+        return item
+
+    is_owner = int(agent.user_id) == int(user.id)
+    is_generated_manager = is_workforce_generated_manager_agent(agent)
+    can_edit = is_owner and not is_generated_manager
+    item.update(
+        {
+            "access": "owner" if is_owner else "policy",
+            "readonly": not can_edit,
+            "can_edit": can_edit,
+            "can_publish": can_edit,
+            "can_delete": can_edit,
+        }
+    )
+    return item
+
+
+def _serialize_accessible_agent_option(
+    accessible_agent: AccessibleAgent,
+) -> dict[str, Any]:
+    item = _serialize_agent(accessible_agent.agent)
+    item.update(accessible_agent_permissions(accessible_agent))
+    return item
 
 
 def _sorted_workers(workforce: Workforce) -> list[WorkforceAgent]:
@@ -146,10 +175,12 @@ def _sorted_workers(workforce: Workforce) -> list[WorkforceAgent]:
     )
 
 
-def _serialize_worker(worker: WorkforceAgent) -> dict[str, Any]:
+def _serialize_worker(
+    worker: WorkforceAgent, user: User | None = None
+) -> dict[str, Any]:
     return {
         "id": worker.id,
-        "agent": _serialize_agent(worker.agent),
+        "agent": _serialize_agent(worker.agent, user),
         "alias": worker.alias,
         "assignment_instructions": worker.assignment_instructions,
         "source_type": worker.source_type,
@@ -162,15 +193,19 @@ def _serialize_worker(worker: WorkforceAgent) -> dict[str, Any]:
     }
 
 
-def _serialize_workforce_detail(workforce: Workforce) -> dict[str, Any]:
+def _serialize_workforce_detail(
+    workforce: Workforce, user: User | None = None
+) -> dict[str, Any]:
     return {
         "id": workforce.id,
         "name": workforce.name,
         "description": workforce.description,
         "status": workforce.status,
-        "manager": _serialize_agent(workforce.manager_agent),
+        "manager": _serialize_agent(workforce.manager_agent, user),
         "manager_instructions": workforce.manager_instructions,
-        "workers": [_serialize_worker(worker) for worker in _sorted_workers(workforce)],
+        "workers": [
+            _serialize_worker(worker, user) for worker in _sorted_workers(workforce)
+        ],
         "canvas_layout": workforce.canvas_layout,
         "scope_type": workforce.scope_type,
         "scope_id": workforce.scope_id,
@@ -407,7 +442,7 @@ async def create_workforce(
         db.rollback()
         raise
 
-    return _serialize_workforce_detail(_reload_workforce(db, workforce))
+    return _serialize_workforce_detail(_reload_workforce(db, workforce), user)
 
 
 @router.post("/from-prompt")
@@ -418,7 +453,22 @@ async def create_workforce_from_prompt_endpoint(
 ) -> dict[str, Any]:
     result = await create_workforce_from_prompt(db, user, prompt=request.prompt)
     workforce = _reload_workforce(db, result.workforce)
-    return _serialize_workforce_detail(workforce)
+    return _serialize_workforce_detail(workforce, user)
+
+
+@router.get("/agent-options")
+async def list_workforce_agent_options(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    return [
+        _serialize_accessible_agent_option(agent)
+        for agent in list_accessible_published_agent_items(
+            db,
+            user,
+            purpose="workforce_select",
+        )
+    ]
 
 
 @router.get("/{workforce_id}")
@@ -433,7 +483,7 @@ async def get_workforce(
         _load_workforce(db, workforce_id),
         action="view",
     )
-    return _serialize_workforce_detail(workforce)
+    return _serialize_workforce_detail(workforce, user)
 
 
 @router.patch("/{workforce_id}")
@@ -471,21 +521,22 @@ async def update_workforce(
     if _field_supplied(request, "manager_agent_id"):
         if request.manager_agent_id is None:
             raise HTTPException(status_code=400, detail="manager_agent_id is required")
-        manager_agent = ensure_agent_access(
-            db.query(Agent).filter(Agent.id == request.manager_agent_id).first(),
-            user,
-            db,
-            require_published=True,
-        )
-        if any(
-            int(worker.agent_id) == int(manager_agent.id)
-            for worker in workforce.workers
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Manager agent cannot also be a worker",
+        if int(request.manager_agent_id) != int(workforce.manager_agent_id):
+            manager_agent = ensure_agent_access(
+                db.query(Agent).filter(Agent.id == request.manager_agent_id).first(),
+                user,
+                db,
+                require_published=True,
             )
-        workforce_row.manager_agent_id = int(manager_agent.id)
+            if any(
+                int(worker.agent_id) == int(manager_agent.id)
+                for worker in workforce.workers
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Manager agent cannot also be a worker",
+                )
+            workforce_row.manager_agent_id = int(manager_agent.id)
 
     try:
         _validate_if_active(db, user, workforce)
@@ -494,7 +545,7 @@ async def update_workforce(
         db.rollback()
         raise
 
-    return _serialize_workforce_detail(_reload_workforce(db, workforce))
+    return _serialize_workforce_detail(_reload_workforce(db, workforce), user)
 
 
 @router.delete("/{workforce_id}")
@@ -536,7 +587,7 @@ async def publish_workforce(
         db.rollback()
         raise
 
-    return _serialize_workforce_detail(_reload_workforce(db, workforce))
+    return _serialize_workforce_detail(_reload_workforce(db, workforce), user)
 
 
 @router.post("/{workforce_id}/unpublish")
@@ -554,7 +605,7 @@ async def unpublish_workforce(
     _ensure_publish_state_mutable(workforce)
     cast(Any, workforce).status = "draft"
     db.commit()
-    return _serialize_workforce_detail(_reload_workforce(db, workforce))
+    return _serialize_workforce_detail(_reload_workforce(db, workforce), user)
 
 
 @router.post("/{workforce_id}/agents")
@@ -590,7 +641,7 @@ async def add_workforce_agent(
         raise
 
     db.refresh(worker)
-    return _serialize_worker(worker)
+    return _serialize_worker(worker, user)
 
 
 @router.patch("/{workforce_id}/agents/{member_id}")
@@ -637,7 +688,7 @@ async def update_workforce_agent(
         raise
 
     db.refresh(worker)
-    return _serialize_worker(worker)
+    return _serialize_worker(worker, user)
 
 
 @router.delete("/{workforce_id}/agents/{member_id}")
@@ -760,7 +811,7 @@ async def apply_workforce_changes(
         "status": "applied",
         "message_id": result.message.id,
         "message": serialize_builder_message(result.message),
-        "workforce": _serialize_workforce_detail(workforce),
+        "workforce": _serialize_workforce_detail(workforce, user),
     }
 
 

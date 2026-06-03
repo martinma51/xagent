@@ -38,7 +38,10 @@ from src.xagent.core.tools.core.RAG_tools.management import (
     list_documents,
     retry_document,
 )
-from src.xagent.core.tools.core.RAG_tools.management.status import load_ingestion_status
+from src.xagent.core.tools.core.RAG_tools.management.status import (
+    load_ingestion_status,
+    write_ingestion_status,
+)
 from src.xagent.core.tools.core.RAG_tools.storage import get_vector_index_store
 from src.xagent.core.tools.core.RAG_tools.storage.contracts import DocumentRecord
 from src.xagent.core.tools.core.RAG_tools.storage.factory import get_metadata_store
@@ -512,7 +515,7 @@ def test_delete_collection_invokes_cleanup_all_documents(
 
     monkeypatch.setattr(
         collections_module,
-        "clear_ingestion_status",
+        "_clear_ingestion_status_impl",
         _fake_clear,
     )
 
@@ -542,7 +545,7 @@ def test_delete_collection_preserves_partial_vector_cleanup(
         collections_module, "get_vector_index_store", lambda: mock_store
     )
     monkeypatch.setattr(
-        collections_module, "clear_ingestion_status", lambda *args, **kwargs: None
+        collections_module, "_clear_ingestion_status_impl", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
         collections_module,
@@ -595,7 +598,7 @@ def test_delete_collection_non_admin_uses_batched_document_scoped_delete(
     monkeypatch.setattr(collections_module, "get_vector_index_store", lambda: store)
     monkeypatch.setattr(
         collections_module,
-        "clear_ingestion_status",
+        "_clear_ingestion_status_impl",
         lambda *args, **kwargs: None,
     )
 
@@ -1024,7 +1027,7 @@ def test_delete_document_authorizes_before_cascade() -> None:
             collections_module, "get_vector_index_store", return_value=vector_store
         ),
         patch.object(vector_store, "delete_document_data") as mock_delete_data,
-        patch.object(collections_module, "clear_ingestion_status") as mock_clear,
+        patch.object(collections_module, "_clear_ingestion_status_impl") as mock_clear,
     ):
         result = delete_document("demo", "doc-1", user_id=7, is_admin=False)
 
@@ -1065,7 +1068,7 @@ def test_delete_document_allows_legacy_owner_recovered_from_source_path() -> Non
             "delete_document_data",
             return_value={"documents": 1, "main_pointers": 1},
         ) as mock_delete_data,
-        patch.object(collections_module, "clear_ingestion_status") as mock_clear,
+        patch.object(collections_module, "_clear_ingestion_status_impl") as mock_clear,
     ):
         result = delete_document("demo", "doc-legacy", user_id=7, is_admin=False)
 
@@ -1113,7 +1116,7 @@ def test_delete_document_rejects_legacy_row_owned_by_another_user() -> None:
             collections_module, "get_vector_index_store", return_value=vector_store
         ),
         patch.object(vector_store, "delete_document_data") as mock_delete_data,
-        patch.object(collections_module, "clear_ingestion_status") as mock_clear,
+        patch.object(collections_module, "_clear_ingestion_status_impl") as mock_clear,
     ):
         result = delete_document("demo", "doc-foreign", user_id=7, is_admin=False)
 
@@ -1136,7 +1139,7 @@ def test_delete_document_clears_status_with_caller_scope() -> None:
             "delete_document_data",
             return_value={"documents": 1, "main_pointers": 1},
         ) as mock_delete_data,
-        patch.object(collections_module, "clear_ingestion_status") as mock_clear,
+        patch.object(collections_module, "_clear_ingestion_status_impl") as mock_clear,
     ):
         result = delete_document("demo", "doc-1", user_id=9, is_admin=True)
 
@@ -1153,6 +1156,53 @@ def test_delete_document_clears_status_with_caller_scope() -> None:
         "doc-1",
         user_id=9,
         is_admin=True,
+    )
+
+
+def test_delete_document_cleans_failed_ingest_status_by_doc_id(
+    temp_lancedb_dir: str,
+) -> None:
+    """Failed ingest rollback cleanup should remove document data and status."""
+
+    collection = "failed_ingest_cleanup"
+    doc_id = "failed-doc"
+    now = datetime.now(timezone.utc)
+
+    _insert_documents(
+        [
+            {
+                "collection": collection,
+                "doc_id": doc_id,
+                "source_path": "/uploads/user_7/failed-doc.pdf",
+                "file_type": "pdf",
+                "content_hash": "failed-hash",
+                "uploaded_at": now,
+                "title": "Failed",
+                "language": "zh",
+                "user_id": 7,
+            }
+        ]
+    )
+    write_ingestion_status(
+        collection,
+        doc_id,
+        status=DocumentProcessingStatus.FAILED.value,
+        message="Failed during ingest",
+        user_id=7,
+    )
+
+    result = delete_document(collection, doc_id, user_id=7, is_admin=False)
+
+    assert result.status == "success"
+    assert result.details.get("documents") == 1
+    assert (
+        load_ingestion_status(
+            collection=collection,
+            doc_id=doc_id,
+            user_id=7,
+            is_admin=False,
+        )
+        == []
     )
 
 

@@ -8,7 +8,15 @@ import pytest
 
 from xagent.config import (
     AGENT_RUNTIME,
+    APP_BASE_URL,
+    BACKGROUND_JOB_MAX_RETRIES,
+    BACKGROUND_JOB_STALE_SECONDS,
+    BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS,
+    BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS,
     BOXLITE_HOME_DIR,
+    CELERY_BROKER_URL,
+    CELERY_ENABLED,
+    CELERY_RESULT_BACKEND,
     DATABASE_URL,
     EXTERNAL_SKILLS_LIBRARY_DIRS,
     EXTERNAL_UPLOAD_DIRS,
@@ -26,6 +34,7 @@ from xagent.config import (
     LANCEDB_PATH,
     MAX_TRACE_PAYLOAD_BYTES,
     MAX_UPLOAD_SIZE,
+    PASSWORD_RESET_EXPIRE_MINUTES,
     PREVIEW_TMP_DIR,
     REDIS_URL,
     SANDBOX_CPUS,
@@ -35,6 +44,14 @@ from xagent.config import (
     SANDBOX_IMAGE,
     SANDBOX_MEMORY,
     SANDBOX_VOLUMES,
+    SMTP_FROM_EMAIL,
+    SMTP_FROM_NAME,
+    SMTP_HOST,
+    SMTP_PASSWORD,
+    SMTP_PORT,
+    SMTP_USE_SSL,
+    SMTP_USE_TLS,
+    SMTP_USERNAME,
     STORAGE_ROOT,
     UPLOADS_DIR,
     WEB_CRAWL_TLS_IMPERSONATE,
@@ -43,7 +60,15 @@ from xagent.config import (
     format_file_size,
     get_agent_pattern_for_execution_mode,
     get_agent_runtime,
+    get_app_base_url,
+    get_background_job_max_retries,
+    get_background_job_stale_seconds,
+    get_background_job_sweep_interval_seconds,
+    get_background_job_visibility_timeout_seconds,
     get_boxlite_home_dir,
+    get_celery_broker_url,
+    get_celery_enabled,
+    get_celery_result_backend,
     get_database_url,
     get_default_sqlite_db_path,
     get_default_task_execution_mode,
@@ -63,6 +88,7 @@ from xagent.config import (
     get_lancedb_path,
     get_max_trace_payload_bytes,
     get_max_upload_size_bytes,
+    get_password_reset_expire_minutes,
     get_preview_tmp_dir,
     get_redis_url,
     get_sandbox_cpus,
@@ -72,6 +98,14 @@ from xagent.config import (
     get_sandbox_image,
     get_sandbox_memory,
     get_sandbox_volumes,
+    get_smtp_from_email,
+    get_smtp_from_name,
+    get_smtp_host,
+    get_smtp_password,
+    get_smtp_port,
+    get_smtp_use_ssl,
+    get_smtp_use_tls,
+    get_smtp_username,
     get_storage_root,
     get_uploads_dir,
     get_web_crawl_tls_impersonate,
@@ -163,6 +197,104 @@ class TestEnvironmentVariableConstants:
             HOT_PATH_TASK_CACHE_TTL_SECONDS == "XAGENT_HOT_PATH_TASK_CACHE_TTL_SECONDS"
         )
 
+    def test_celery_background_job_constants(self):
+        assert CELERY_ENABLED == "XAGENT_CELERY_ENABLED"
+        assert CELERY_BROKER_URL == "XAGENT_CELERY_BROKER_URL"
+        assert CELERY_RESULT_BACKEND == "XAGENT_CELERY_RESULT_BACKEND"
+        assert (
+            BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS
+            == "XAGENT_BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS"
+        )
+        assert BACKGROUND_JOB_MAX_RETRIES == "XAGENT_BACKGROUND_JOB_MAX_RETRIES"
+        assert BACKGROUND_JOB_STALE_SECONDS == "XAGENT_BACKGROUND_JOB_STALE_SECONDS"
+        assert (
+            BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS
+            == "XAGENT_BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS"
+        )
+
+    def test_auth_email_config_constants(self):
+        assert PASSWORD_RESET_EXPIRE_MINUTES == "XAGENT_PASSWORD_RESET_EXPIRE_MINUTES"
+        assert APP_BASE_URL == "XAGENT_APP_BASE_URL"
+        assert SMTP_HOST == "XAGENT_SMTP_HOST"
+        assert SMTP_PORT == "XAGENT_SMTP_PORT"
+        assert SMTP_USERNAME == "XAGENT_SMTP_USERNAME"
+        assert SMTP_PASSWORD == "XAGENT_SMTP_PASSWORD"
+        assert SMTP_USE_TLS == "XAGENT_SMTP_USE_TLS"
+        assert SMTP_USE_SSL == "XAGENT_SMTP_USE_SSL"
+        assert SMTP_FROM_EMAIL == "XAGENT_SMTP_FROM_EMAIL"
+        assert SMTP_FROM_NAME == "XAGENT_SMTP_FROM_NAME"
+
+
+class TestAuthEmailConfig:
+    def test_password_reset_expire_minutes_defaults_to_30(self, monkeypatch):
+        monkeypatch.delenv(PASSWORD_RESET_EXPIRE_MINUTES, raising=False)
+        assert get_password_reset_expire_minutes() == 30
+
+    @pytest.mark.parametrize("value", ["abc", "0", "-5"])
+    def test_password_reset_expire_minutes_invalid_values_fall_back(
+        self, monkeypatch, value
+    ):
+        monkeypatch.setenv(PASSWORD_RESET_EXPIRE_MINUTES, value)
+        assert get_password_reset_expire_minutes() == 30
+
+    def test_app_base_url_returns_none_when_unset_or_blank(self, monkeypatch):
+        monkeypatch.delenv(APP_BASE_URL, raising=False)
+        assert get_app_base_url() is None
+
+        monkeypatch.setenv(APP_BASE_URL, "   ")
+        assert get_app_base_url() is None
+
+    def test_app_base_url_strips_and_removes_trailing_slash(self, monkeypatch):
+        monkeypatch.setenv(APP_BASE_URL, " https://app.example.com/base/ ")
+        assert get_app_base_url() == "https://app.example.com/base"
+
+    def test_smtp_host_and_credentials_strip_expected_values(self, monkeypatch):
+        monkeypatch.setenv(SMTP_HOST, " smtp.example.com ")
+        monkeypatch.setenv(SMTP_USERNAME, " user ")
+        monkeypatch.setenv(SMTP_PASSWORD, "secret ")
+        monkeypatch.setenv(SMTP_FROM_EMAIL, " noreply@example.com ")
+
+        assert get_smtp_host() == "smtp.example.com"
+        assert get_smtp_username() == "user"
+        assert get_smtp_password() == "secret "
+        assert get_smtp_from_email() == "noreply@example.com"
+
+    def test_smtp_port_defaults_and_invalid_values_fall_back(self, monkeypatch):
+        monkeypatch.delenv(SMTP_PORT, raising=False)
+        assert get_smtp_port() == 587
+
+        monkeypatch.setenv(SMTP_PORT, "abc")
+        assert get_smtp_port() == 587
+
+        monkeypatch.setenv(SMTP_PORT, "0")
+        assert get_smtp_port() == 587
+
+    @pytest.mark.parametrize(
+        "env_var,getter,default,true_value,false_value",
+        [
+            (SMTP_USE_TLS, get_smtp_use_tls, True, "true", "false"),
+            (SMTP_USE_SSL, get_smtp_use_ssl, False, "yes", "off"),
+        ],
+    )
+    def test_smtp_bool_settings(
+        self, monkeypatch, env_var, getter, default, true_value, false_value
+    ):
+        monkeypatch.delenv(env_var, raising=False)
+        assert getter() is default
+
+        monkeypatch.setenv(env_var, true_value)
+        assert getter() is True
+
+        monkeypatch.setenv(env_var, false_value)
+        assert getter() is False
+
+    def test_smtp_from_name_uses_default_and_trimmed_override(self, monkeypatch):
+        monkeypatch.delenv(SMTP_FROM_NAME, raising=False)
+        assert get_smtp_from_name("Xagent") == "Xagent"
+
+        monkeypatch.setenv(SMTP_FROM_NAME, " Support Team ")
+        assert get_smtp_from_name("Xagent") == "Support Team"
+
 
 class TestHotPathCacheConfig:
     def test_redis_url_empty_is_none(self, monkeypatch):
@@ -193,6 +325,47 @@ class TestHotPathCacheConfig:
         monkeypatch.setenv(HOT_PATH_TASK_CACHE_TTL_SECONDS, "3")
         assert get_hot_path_cache_ttl_seconds() == 45
         assert get_hot_path_task_cache_ttl_seconds() == 3
+
+
+class TestCeleryBackgroundJobConfig:
+    def test_celery_disabled_by_default(self, monkeypatch):
+        monkeypatch.delenv(CELERY_ENABLED, raising=False)
+        assert get_celery_enabled() is False
+
+    def test_celery_enabled_true_values(self, monkeypatch):
+        monkeypatch.setenv(CELERY_ENABLED, "yes")
+        assert get_celery_enabled() is True
+
+    def test_celery_broker_explicit(self, monkeypatch):
+        monkeypatch.setenv(CELERY_BROKER_URL, " redis://localhost:6379/7 ")
+        monkeypatch.setenv(REDIS_URL, "redis://localhost:6379/0")
+        assert get_celery_broker_url() == "redis://localhost:6379/7"
+
+    def test_celery_broker_derives_from_redis_url_db1(self, monkeypatch):
+        monkeypatch.delenv(CELERY_BROKER_URL, raising=False)
+        monkeypatch.setenv(REDIS_URL, "redis://localhost:6379/0")
+        assert get_celery_broker_url() == "redis://localhost:6379/1"
+
+    def test_celery_broker_none_without_redis(self, monkeypatch):
+        monkeypatch.delenv(CELERY_BROKER_URL, raising=False)
+        monkeypatch.delenv(REDIS_URL, raising=False)
+        assert get_celery_broker_url() is None
+
+    def test_celery_result_backend_optional(self, monkeypatch):
+        monkeypatch.delenv(CELERY_RESULT_BACKEND, raising=False)
+        assert get_celery_result_backend() is None
+        monkeypatch.setenv(CELERY_RESULT_BACKEND, " redis://localhost:6379/2 ")
+        assert get_celery_result_backend() == "redis://localhost:6379/2"
+
+    def test_background_job_tuning_defaults(self, monkeypatch):
+        monkeypatch.delenv(BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS, raising=False)
+        monkeypatch.delenv(BACKGROUND_JOB_MAX_RETRIES, raising=False)
+        monkeypatch.delenv(BACKGROUND_JOB_STALE_SECONDS, raising=False)
+        monkeypatch.delenv(BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS, raising=False)
+        assert get_background_job_visibility_timeout_seconds() == 3600
+        assert get_background_job_max_retries() == 3
+        assert get_background_job_stale_seconds() == 7200
+        assert get_background_job_sweep_interval_seconds() == 300
 
 
 class TestGetWebSearchProvider:

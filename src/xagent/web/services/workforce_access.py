@@ -1,11 +1,14 @@
 from collections.abc import Iterable
-from typing import Any, cast
+from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import or_
 from sqlalchemy.orm import Query, Session
 
-from xagent.web.models.agent import Agent, AgentStatus
+from xagent.web.models.agent import (
+    Agent,
+    AgentStatus,
+    is_workforce_generated_manager_agent,
+)
 from xagent.web.models.user import User
 
 from ..models.workforce import Workforce
@@ -193,6 +196,8 @@ def ensure_agent_access(
 ) -> Agent:
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if is_workforce_generated_manager_agent(agent):
+        raise HTTPException(status_code=404, detail="Agent not found")
     if user.is_admin or int(agent.user_id) == int(user.id):
         if require_published and agent.status != AgentStatus.PUBLISHED:
             raise HTTPException(
@@ -218,27 +223,14 @@ def list_accessible_published_agents(
     purpose: str = "workforce_select",
     exclude_agent_ids: Iterable[int] | None = None,
 ) -> list[Agent]:
-    excluded = set(exclude_agent_ids or [])
-    query = db.query(Agent).filter(cast(Any, Agent.status) == AgentStatus.PUBLISHED)
+    from .agent_access import list_accessible_published_agents as list_agents
 
-    if not user.is_admin:
-        visible_agent_ids = get_visible_agent_ids(db, user, purpose)
-        if visible_agent_ids is None:
-            query = query.filter(Agent.user_id == int(user.id))
-        elif visible_agent_ids:
-            query = query.filter(
-                or_(
-                    Agent.user_id == int(user.id),
-                    Agent.id.in_(visible_agent_ids),
-                )
-            )
-        else:
-            query = query.filter(Agent.user_id == int(user.id))
-
-    if excluded:
-        query = query.filter(Agent.id.notin_(excluded))
-
-    return [agent for agent in query.order_by(Agent.id.asc()).all()]
+    return list_agents(
+        db,
+        user,
+        purpose=purpose,
+        exclude_agent_ids=exclude_agent_ids,
+    )
 
 
 def ensure_workforce_agent_run_access(

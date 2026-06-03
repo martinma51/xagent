@@ -21,6 +21,10 @@ from xagent.core.agent import (
     PlanStep,
     PlanValidationError,
 )
+from xagent.core.agent.pattern.base import RequiredToolCallError
+from xagent.core.agent.pattern.dag.plan_generator import (
+    PLAN_GENERATION_REQUIRED_TOOL_MESSAGE,
+)
 from xagent.core.model.chat.types import ChunkType, StreamChunk
 
 DAG_COMPLETION_TOOL_NAME = "assess_dag_completion"
@@ -462,6 +466,89 @@ async def test_dag_pattern_streams_overall_completion_not_step_result() -> None:
     ]
     assert outbound.events[1]["delta"] == "DAG done."
     assert outbound.events[2]["content"] == "DAG done."
+
+
+@pytest.mark.asyncio
+async def test_dag_child_react_repeated_decision_can_finalize() -> None:
+    class RepeatedDecisionLLM:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+            self.tool_call_count = 0
+
+        async def chat(self, **kwargs: Any) -> dict[str, Any]:
+            self.calls.append(kwargs)
+            if has_tool(kwargs, DAG_COMPLETION_TOOL_NAME):
+                return default_completion_assessment_response(kwargs)
+            if has_tool(kwargs, "react_decision"):
+                return {
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "decision_1",
+                            "function": {
+                                "name": "react_decision",
+                                "arguments": json.dumps(
+                                    {
+                                        "action": "final_answer",
+                                        "reason": "Enough repeated tool results.",
+                                        "answer": "DAG child answer.",
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                }
+
+            self.tool_call_count += 1
+            if self.tool_call_count > 4:
+                raise AssertionError(
+                    "expected repeated decision before another tool call"
+                )
+            return {
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": f"calc_{self.tool_call_count}",
+                        "function": {
+                            "name": "calculator",
+                            "arguments": json.dumps(
+                                {"expression": f"{self.tool_call_count}+1"}
+                            ),
+                        },
+                    }
+                ],
+            }
+
+    llm = RepeatedDecisionLLM()
+    pattern = DAGPattern(
+        lambda **_: build_plan(
+            PlanStep(
+                id="calculate",
+                task="Calculate repeatedly",
+                tool_names=["calculator"],
+            )
+        ),
+        react_max_iterations=6,
+    )
+    context = ExecutionContext(execution_id="dag-repeated-decision")
+    context.add_user_message("Use DAG and calculate.")
+    tool = FakeTool()
+    outbound = OutboundCollector()
+    runtime = PatternRuntime(
+        execution_id="dag-repeated-decision",
+        outbound_message_handler=outbound,
+    )
+
+    result = await pattern.run(context=context, tools=[tool], llm=llm, runtime=runtime)
+
+    assert result["success"] is True
+    assert result["output"] == "DAG child answer."
+    assert len(tool.calls) == 4
+    assert [event["type"] for event in outbound.events] == [
+        "final_answer_start",
+        "final_answer_delta",
+        "final_answer_end",
+    ]
 
 
 @pytest.mark.asyncio
@@ -1420,6 +1507,9 @@ async def test_llm_plan_generator_builds_plan_from_model_json() -> None:
     assert "response_language" in system_prompt
     assert "output_language_policy field" in system_prompt
     assert "Plan language rules" in system_prompt
+    assert "Simplified Chinese" in system_prompt
+    assert "Traditional Chinese" in system_prompt
+    assert "do not use generic Chinese" in system_prompt
     assert (
         "Write every plan step task, description, termination_condition, "
         "and completion_evidence in the same natural language specified by "
@@ -1432,6 +1522,11 @@ async def test_llm_plan_generator_builds_plan_from_model_json() -> None:
     assert "output_language_policy" in prompt_payload
     plan_schema = llm.calls[0]["tools"][0]["function"]["parameters"]["properties"]
     assert "response_language" in plan_schema
+    assert "Simplified Chinese" in plan_schema["response_language"]["description"]
+    assert "Traditional Chinese" in plan_schema["response_language"]["description"]
+    assert (
+        "do not use generic Chinese" in plan_schema["response_language"]["description"]
+    )
     assert (
         "response_language"
         in llm.calls[0]["tools"][0]["function"]["parameters"]["required"]
@@ -1440,6 +1535,82 @@ async def test_llm_plan_generator_builds_plan_from_model_json() -> None:
     assert llm.calls[0]["tool_choice"] == "required"
     assert llm.calls[0]["thinking"] == {"type": "disabled", "enable": False}
     assert "response_format" not in llm.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_llm_plan_generator_retries_missing_required_tool_call() -> None:
+    generator = LLMPlanGenerator()
+    context = ExecutionContext(execution_id="dag-llm-plan-retry")
+    context.add_user_message("Create a short plan")
+    llm = SequenceLLM(
+        [
+            {"content": "plain text instead of a tool call"},
+            plan_tool_response(
+                [
+                    {
+                        "id": "final",
+                        "task": "Finalize answer",
+                        "dependencies": [],
+                        "termination_condition": (
+                            "Stop after final_answer returns the answer."
+                        ),
+                        "completion_evidence": (
+                            "The final answer has been returned successfully."
+                        ),
+                        "tool_names": [],
+                    }
+                ]
+            ),
+        ]
+    )
+
+    plan = await generator.generate_plan(
+        request=PlanGenerationRequest(
+            context=context,
+            execution_id="dag-llm-plan-retry",
+            available_tool_names=[],
+        ),
+        llm=llm,
+    )
+
+    assert [step.id for step in plan.steps] == ["final"]
+    assert llm.calls == 2
+    retry_roles = [message["role"] for message in llm.seen_messages[1]]
+    assert not any(
+        current == previous == "user"
+        for previous, current in zip(retry_roles, retry_roles[1:])
+    )
+    retry_message = llm.seen_messages[1][-1]["content"]
+    assert "did not call the required generate_execution_plan tool" in retry_message
+
+
+@pytest.mark.asyncio
+async def test_llm_plan_generator_reports_missing_required_tool_call() -> None:
+    generator = LLMPlanGenerator()
+    context = ExecutionContext(execution_id="dag-llm-plan-missing")
+    context.add_user_message("Create a short plan")
+    llm = SequenceLLM(
+        [
+            {"content": "plain text instead of a tool call"},
+            {"tool_calls": []},
+        ]
+    )
+
+    with pytest.raises(RequiredToolCallError) as exc_info:
+        await generator.generate_plan(
+            request=PlanGenerationRequest(
+                context=context,
+                execution_id="dag-llm-plan-missing",
+                available_tool_names=[],
+            ),
+            llm=llm,
+        )
+
+    assert exc_info.value.tool_name == "generate_execution_plan"
+    assert exc_info.value.attempts == 2
+    assert exc_info.value.user_message == PLAN_GENERATION_REQUIRED_TOOL_MESSAGE
+    assert "LLMPlanGenerator requires" not in str(exc_info.value)
+    assert llm.calls == 2
 
 
 def test_dag_output_language_reads_dict_context_metadata() -> None:
@@ -1638,6 +1809,45 @@ async def test_dag_pattern_returns_failed_result_for_plan_generator_exception() 
     assert (
         runtime.last_checkpoint["metadata"]["failure_reason"] == "plan_generation_error"
     )
+
+
+@pytest.mark.asyncio
+async def test_dag_pattern_returns_friendly_missing_required_tool_failure() -> None:
+    runtime = PatternRuntime(execution_id="dag-plan-tool-missing")
+    pattern = DAGPattern(LLMPlanGenerator())
+    context = ExecutionContext(execution_id="dag-plan-tool-missing")
+    context.add_user_message("Create a short plan")
+    llm = SequenceLLM(
+        [
+            {"content": "plain text instead of a tool call"},
+            {"tool_calls": []},
+        ]
+    )
+
+    result = await pattern.run(
+        context=context,
+        tools=[],
+        llm=llm,
+        runtime=runtime,
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert result["failure_reason"] == "missing_required_tool_call"
+    assert result["required_tool_name"] == "generate_execution_plan"
+    assert result["attempts"] == 2
+    assert result["error"] == PLAN_GENERATION_REQUIRED_TOOL_MESSAGE
+    assert "LLMPlanGenerator requires" not in result["error"]
+    assert runtime.last_checkpoint is not None
+    assert runtime.last_checkpoint["label"] == "dag_plan_generation_failed"
+    assert runtime.last_checkpoint["metadata"]["failure_reason"] == (
+        "missing_required_tool_call"
+    )
+    assert (
+        runtime.last_checkpoint["metadata"]["required_tool_name"]
+        == "generate_execution_plan"
+    )
+    assert runtime.last_checkpoint["metadata"]["attempts"] == 2
 
 
 @pytest.mark.asyncio

@@ -25,6 +25,7 @@ import os
 import tempfile
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,25 @@ REDIS_URL = "XAGENT_REDIS_URL"
 HOT_PATH_CACHE_ENABLED = "XAGENT_HOT_PATH_CACHE_ENABLED"
 HOT_PATH_CACHE_TTL_SECONDS = "XAGENT_HOT_PATH_CACHE_TTL_SECONDS"
 HOT_PATH_TASK_CACHE_TTL_SECONDS = "XAGENT_HOT_PATH_TASK_CACHE_TTL_SECONDS"
+CELERY_ENABLED = "XAGENT_CELERY_ENABLED"
+CELERY_BROKER_URL = "XAGENT_CELERY_BROKER_URL"
+CELERY_RESULT_BACKEND = "XAGENT_CELERY_RESULT_BACKEND"
+BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS = (
+    "XAGENT_BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS"
+)
+BACKGROUND_JOB_MAX_RETRIES = "XAGENT_BACKGROUND_JOB_MAX_RETRIES"
+BACKGROUND_JOB_STALE_SECONDS = "XAGENT_BACKGROUND_JOB_STALE_SECONDS"
+BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS = "XAGENT_BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS"
+PASSWORD_RESET_EXPIRE_MINUTES = "XAGENT_PASSWORD_RESET_EXPIRE_MINUTES"
+APP_BASE_URL = "XAGENT_APP_BASE_URL"
+SMTP_HOST = "XAGENT_SMTP_HOST"
+SMTP_PORT = "XAGENT_SMTP_PORT"
+SMTP_USERNAME = "XAGENT_SMTP_USERNAME"
+SMTP_PASSWORD = "XAGENT_SMTP_PASSWORD"
+SMTP_USE_TLS = "XAGENT_SMTP_USE_TLS"
+SMTP_USE_SSL = "XAGENT_SMTP_USE_SSL"
+SMTP_FROM_EMAIL = "XAGENT_SMTP_FROM_EMAIL"
+SMTP_FROM_NAME = "XAGENT_SMTP_FROM_NAME"
 
 TOOL_MAX_OUTPUT_LENGTH = "XAGENT_TOOL_MAX_OUTPUT_LENGTH"
 TOOL_MAX_RECURSION_DEPTH = "XAGENT_TOOL_MAX_RECURSION_DEPTH"
@@ -211,6 +231,67 @@ def _get_positive_int_env(env_var: str, default: int, *, minimum: int = 1) -> in
     return parsed
 
 
+def _get_bool_env(env_var: str, default: bool) -> bool:
+    value = os.getenv(env_var)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_password_reset_expire_minutes() -> int:
+    """Return the password reset token expiry window in minutes."""
+    return _get_positive_int_env(PASSWORD_RESET_EXPIRE_MINUTES, 30)
+
+
+def get_app_base_url() -> str | None:
+    """Return the trusted frontend base URL used in email links."""
+    value = os.getenv(APP_BASE_URL)
+    if value is None:
+        return None
+    value = value.strip()
+    return value.rstrip("/") or None
+
+
+def get_smtp_host() -> str:
+    return os.getenv(SMTP_HOST, "").strip()
+
+
+def get_smtp_port() -> int:
+    return _get_positive_int_env(SMTP_PORT, 587)
+
+
+def get_smtp_username() -> str:
+    return os.getenv(SMTP_USERNAME, "").strip()
+
+
+def get_smtp_password() -> str:
+    return os.getenv(SMTP_PASSWORD, "")
+
+
+def get_smtp_use_tls() -> bool:
+    return _get_bool_env(SMTP_USE_TLS, True)
+
+
+def get_smtp_use_ssl() -> bool:
+    return _get_bool_env(SMTP_USE_SSL, False)
+
+
+def get_smtp_from_email() -> str:
+    return os.getenv(SMTP_FROM_EMAIL, "").strip()
+
+
+def get_smtp_from_name(default: str) -> str:
+    return os.getenv(SMTP_FROM_NAME, default).strip() or default
+
+
+def _redis_url_with_database(url: str, database: int) -> str:
+    """Return a Redis URL pointing at a different logical database."""
+    parts = urlsplit(url)
+    if parts.scheme not in {"redis", "rediss", "redis+socket"}:
+        return url
+    return urlunsplit((parts.scheme, parts.netloc, f"/{database}", "", ""))
+
+
 def get_redis_url() -> str | None:
     """Return the optional Redis URL used by hot-path cache backends."""
     value = os.getenv(REDIS_URL)
@@ -239,6 +320,69 @@ def get_hot_path_cache_ttl_seconds() -> int:
 def get_hot_path_task_cache_ttl_seconds() -> int:
     """Default TTL for task polling response caches."""
     return _get_positive_int_env(HOT_PATH_TASK_CACHE_TTL_SECONDS, 30)
+
+
+def get_celery_enabled() -> bool:
+    """Return whether durable background jobs should be enqueued to Celery."""
+    return _get_bool_env(CELERY_ENABLED, False)
+
+
+def get_celery_broker_url() -> str | None:
+    """Return the Celery broker URL.
+
+    If only ``XAGENT_REDIS_URL`` is configured, derive DB 1 so Celery broker
+    traffic does not share the short-TTL hot-path cache database.
+    """
+    value = os.getenv(CELERY_BROKER_URL)
+    if value is not None:
+        value = value.strip()
+        return value or None
+
+    redis_url = get_redis_url()
+    if redis_url is None:
+        return None
+    return _redis_url_with_database(redis_url, 1)
+
+
+def get_celery_result_backend() -> str | None:
+    """Return the optional Celery result backend URL.
+
+    Background job state is persisted in the application database, so Celery
+    results are disabled unless explicitly configured.
+    """
+    value = os.getenv(CELERY_RESULT_BACKEND)
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def get_background_job_visibility_timeout_seconds() -> int:
+    """Return Celery broker visibility timeout for long-running jobs."""
+    return _get_positive_int_env(
+        BACKGROUND_JOB_VISIBILITY_TIMEOUT_SECONDS,
+        3600,
+        minimum=60,
+    )
+
+
+def get_background_job_max_retries() -> int:
+    """Return the default max attempts for durable background jobs."""
+    return _get_positive_int_env(BACKGROUND_JOB_MAX_RETRIES, 3)
+
+
+def get_background_job_stale_seconds() -> int:
+    """Return the age after which non-terminal jobs should be requeued."""
+    return _get_positive_int_env(BACKGROUND_JOB_STALE_SECONDS, 7200, minimum=60)
+
+
+def get_background_job_sweep_interval_seconds() -> int:
+    """Return how often the scheduler scans for stale background jobs."""
+    return _get_positive_int_env(
+        BACKGROUND_JOB_SWEEP_INTERVAL_SECONDS,
+        300,
+        minimum=30,
+    )
 
 
 def get_web_dir() -> Path:

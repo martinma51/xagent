@@ -6,10 +6,11 @@ import pytest
 from sqlalchemy import event
 
 from xagent.web.api import workforces as workforces_api
-from xagent.web.models.agent import Agent, AgentStatus
+from xagent.web.models.agent import Agent, AgentOrigin, AgentStatus
 from xagent.web.models.database import get_engine
 from xagent.web.models.user import User
-from xagent.web.models.workforce import WorkforceBuilderMessage, WorkforceRun
+from xagent.web.models.workforce import Workforce, WorkforceBuilderMessage, WorkforceRun
+from xagent.web.services.workforce_access import WorkforcePolicy, set_workforce_policy
 
 from .conftest import (
     _admin_headers,
@@ -24,6 +25,13 @@ def _db(_test_db: None) -> None:
     pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_workforce_policy() -> None:
+    set_workforce_policy(WorkforcePolicy())
+    yield
+    set_workforce_policy(WorkforcePolicy())
+
+
 def _user_id(username: str = "admin") -> int:
     db = _direct_db_session()
     try:
@@ -34,7 +42,12 @@ def _user_id(username: str = "admin") -> int:
         db.close()
 
 
-def _create_published_agent(user_id: int, name: str) -> int:
+def _create_agent(
+    user_id: int,
+    name: str,
+    status: AgentStatus,
+    origin: str = AgentOrigin.USER.value,
+) -> int:
     db = _direct_db_session()
     try:
         agent = Agent(
@@ -43,7 +56,8 @@ def _create_published_agent(user_id: int, name: str) -> int:
             description=f"{name} description",
             instructions=f"{name} instructions",
             execution_mode="balanced",
-            status=AgentStatus.PUBLISHED,
+            origin=origin,
+            status=status,
         )
         db.add(agent)
         db.commit()
@@ -51,6 +65,10 @@ def _create_published_agent(user_id: int, name: str) -> int:
         return int(agent.id)
     finally:
         db.close()
+
+
+def _create_published_agent(user_id: int, name: str) -> int:
+    return _create_agent(user_id, name, AgentStatus.PUBLISHED)
 
 
 def _create_workforce(
@@ -120,9 +138,256 @@ def _create_workforce_run(
         db.close()
 
 
+class _VisibleAgentPolicy(WorkforcePolicy):
+    def __init__(self, visible_agent_ids: set[int]) -> None:
+        self.visible_agent_ids = visible_agent_ids
+
+    def get_visible_agent_ids(
+        self,
+        db: Any,
+        user: User,
+        purpose: str,
+    ) -> set[int]:
+        del db, user
+        assert purpose == "workforce_select"
+        return self.visible_agent_ids
+
+
 def test_workforce_endpoints_require_authentication() -> None:
     response = client.get("/api/workforces")
     assert response.status_code == 403
+
+
+def test_agent_options_use_workforce_policy_and_only_published_agents() -> None:
+    _admin_headers()
+    bob_headers = _register_second_user()
+    admin_id = _user_id("admin")
+    bob_id = _user_id("bob")
+
+    bob_published_id = _create_agent(
+        bob_id,
+        "Bob Published Worker",
+        AgentStatus.PUBLISHED,
+    )
+    bob_draft_id = _create_agent(
+        bob_id,
+        "Bob Draft Worker",
+        AgentStatus.DRAFT,
+    )
+    shared_published_id = _create_agent(
+        admin_id,
+        "Shared Published Worker",
+        AgentStatus.PUBLISHED,
+    )
+    shared_draft_id = _create_agent(
+        admin_id,
+        "Shared Draft Worker",
+        AgentStatus.DRAFT,
+    )
+    set_workforce_policy(_VisibleAgentPolicy({shared_published_id, shared_draft_id}))
+
+    response = client.get("/api/workforces/agent-options", headers=bob_headers)
+    assert response.status_code == 200, response.text
+    options_by_id = {item["id"]: item for item in response.json()}
+
+    assert bob_published_id in options_by_id
+    assert shared_published_id in options_by_id
+    assert bob_draft_id not in options_by_id
+    assert shared_draft_id not in options_by_id
+
+    assert options_by_id[bob_published_id]["access"] == "owner"
+    assert options_by_id[bob_published_id]["readonly"] is False
+    assert options_by_id[shared_published_id]["access"] == "policy"
+    assert options_by_id[shared_published_id]["readonly"] is True
+    assert options_by_id[shared_published_id]["can_edit"] is False
+
+
+def test_generated_workforce_manager_agents_are_private_to_their_workforce() -> None:
+    headers = _admin_headers()
+    owner_id = _user_id("admin")
+    reusable_manager_id = _create_agent(
+        owner_id,
+        "Reusable Manager",
+        AgentStatus.PUBLISHED,
+    )
+    generated_manager_id = _create_agent(
+        owner_id,
+        "Generated Manager",
+        AgentStatus.PUBLISHED,
+        AgentOrigin.WORKFORCE_GENERATED_MANAGER.value,
+    )
+
+    reusable_response = client.post(
+        "/api/workforces",
+        headers=headers,
+        json={
+            "name": "Reusable Manager Workforce",
+            "manager_agent_id": reusable_manager_id,
+        },
+    )
+    assert reusable_response.status_code == 200, reusable_response.text
+
+    generated_response = client.post(
+        "/api/workforces",
+        headers=headers,
+        json={
+            "name": "Generated Manager Workforce",
+            "manager_agent_id": generated_manager_id,
+        },
+    )
+    assert generated_response.status_code == 404
+
+
+def test_update_workforce_keeps_existing_generated_manager_but_rejects_switching_to_one() -> (
+    None
+):
+    headers = _admin_headers()
+    owner_id = _user_id("admin")
+    generated_manager_id = _create_agent(
+        owner_id,
+        "Generated Manager",
+        AgentStatus.PUBLISHED,
+        AgentOrigin.WORKFORCE_GENERATED_MANAGER.value,
+    )
+    reusable_manager_id = _create_agent(
+        owner_id,
+        "Reusable Manager",
+        AgentStatus.PUBLISHED,
+    )
+
+    db = _direct_db_session()
+    try:
+        workforce = Workforce(
+            owner_user_id=owner_id,
+            scope_type="user",
+            scope_id=str(owner_id),
+            name="Generated Manager Workforce",
+            manager_agent_id=generated_manager_id,
+            status="draft",
+        )
+        db.add(workforce)
+        db.commit()
+        db.refresh(workforce)
+        workforce_id = int(workforce.id)
+    finally:
+        db.close()
+
+    keep_response = client.patch(
+        f"/api/workforces/{workforce_id}",
+        headers=headers,
+        json={
+            "name": "Renamed Generated Manager Workforce",
+            "manager_agent_id": generated_manager_id,
+        },
+    )
+    assert keep_response.status_code == 200, keep_response.text
+    assert keep_response.json()["name"] == "Renamed Generated Manager Workforce"
+    assert keep_response.json()["manager"]["id"] == generated_manager_id
+
+    switch_to_reusable_response = client.patch(
+        f"/api/workforces/{workforce_id}",
+        headers=headers,
+        json={"manager_agent_id": reusable_manager_id},
+    )
+    assert switch_to_reusable_response.status_code == 200, (
+        switch_to_reusable_response.text
+    )
+    assert switch_to_reusable_response.json()["manager"]["id"] == reusable_manager_id
+
+    switch_to_generated_response = client.patch(
+        f"/api/workforces/{workforce_id}",
+        headers=headers,
+        json={"manager_agent_id": generated_manager_id},
+    )
+    assert switch_to_generated_response.status_code == 404
+
+
+def test_workforce_detail_marks_generated_manager_readonly() -> None:
+    headers = _admin_headers()
+    owner_id = _user_id("admin")
+    generated_manager_id = _create_agent(
+        owner_id,
+        "Generated Manager",
+        AgentStatus.PUBLISHED,
+        AgentOrigin.WORKFORCE_GENERATED_MANAGER.value,
+    )
+
+    db = _direct_db_session()
+    try:
+        workforce = Workforce(
+            owner_user_id=owner_id,
+            scope_type="user",
+            scope_id=str(owner_id),
+            name="Generated Manager Workforce",
+            manager_agent_id=generated_manager_id,
+            status="draft",
+        )
+        db.add(workforce)
+        db.commit()
+        db.refresh(workforce)
+        workforce_id = int(workforce.id)
+    finally:
+        db.close()
+
+    response = client.get(f"/api/workforces/{workforce_id}", headers=headers)
+    assert response.status_code == 200, response.text
+    manager = response.json()["manager"]
+    assert manager["id"] == generated_manager_id
+    assert manager["access"] == "owner"
+    assert manager["readonly"] is True
+    assert manager["can_edit"] is False
+    assert manager["can_publish"] is False
+    assert manager["can_delete"] is False
+
+
+def test_workforce_detail_marks_policy_visible_agents_readonly() -> None:
+    _admin_headers()
+    bob_headers = _register_second_user()
+    admin_id = _user_id("admin")
+
+    shared_manager_id = _create_agent(
+        admin_id,
+        "Shared Manager",
+        AgentStatus.PUBLISHED,
+    )
+    shared_worker_id = _create_agent(
+        admin_id,
+        "Shared Worker",
+        AgentStatus.PUBLISHED,
+    )
+    set_workforce_policy(_VisibleAgentPolicy({shared_manager_id, shared_worker_id}))
+
+    response = client.post(
+        "/api/workforces",
+        headers=bob_headers,
+        json={
+            "name": "Shared Agent Workforce",
+            "manager_agent_id": shared_manager_id,
+            "workers": [
+                {
+                    "source_type": "existing",
+                    "agent_id": shared_worker_id,
+                    "assignment_instructions": "Handle shared work",
+                },
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    workforce = response.json()
+
+    detail_response = client.get(
+        f"/api/workforces/{workforce['id']}",
+        headers=bob_headers,
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+
+    assert detail["manager"]["access"] == "policy"
+    assert detail["manager"]["readonly"] is True
+    assert detail["manager"]["can_edit"] is False
+    assert detail["workers"][0]["agent"]["access"] == "policy"
+    assert detail["workers"][0]["agent"]["readonly"] is True
+    assert detail["workers"][0]["agent"]["can_edit"] is False
 
 
 def test_create_list_get_and_cross_user_access_control() -> None:

@@ -19,7 +19,7 @@ from ...language import (
 )
 from ...result import unwrap_final_answer_content
 from ...runtime import LLMCallInterrupted, PatternRuntime
-from ..base import AgentPattern, PatternResult
+from ..base import AgentPattern, PatternResult, RequiredToolCallError
 from ..final_answer_stream import FinalAnswerStreamSession, ToolCallStringFieldStreamer
 from ..react import ReActPattern, ReActReasoningMode
 from .plan_generator import (
@@ -93,19 +93,36 @@ class _DAGStepRuntime:
     async def stream_final_answer(self, llm: Any, **kwargs: Any) -> Any:
         return await self.parent.run_llm_call(llm, **kwargs)
 
+    async def start_final_answer_stream(self) -> str | None:
+        return None
+
+    async def emit_final_answer_delta(self, message_id: str, delta: str) -> None:
+        del message_id, delta
+
+    async def end_final_answer_stream(self, message_id: str, content: str) -> None:
+        del message_id, content
+
+    async def fail_final_answer_stream(self, message_id: str, error: str) -> None:
+        del message_id, error
+
     async def send_message(
         self,
         *,
         message: str,
         message_type: str = "info",
         expect_response: bool = False,
+        visible: bool = True,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        outbound_metadata = dict(metadata or {})
+        outbound_metadata.setdefault("step_id", self.step_id)
+        outbound_metadata.setdefault("dag_step_id", self.step_id)
         return await self.parent.send_message(
             message=message,
             message_type=message_type,
             expect_response=expect_response,
-            metadata=metadata,
+            visible=visible,
+            metadata=outbound_metadata,
         )
 
     async def checkpoint(
@@ -327,6 +344,17 @@ class DAGPattern(AgentPattern):
                 skill_manager=kwargs.get("skill_manager"),
                 allowed_skills=kwargs.get("allowed_skills"),
             )
+        except RequiredToolCallError as exc:
+            result = await self._fail(
+                context=context,
+                runtime=runtime,
+                error=exc.user_message,
+                failure_reason=exc.failure_reason,
+                checkpoint_label="dag_plan_generation_failed",
+                extra_metadata=exc.to_metadata(),
+            )
+            await runtime.on_pattern_end(context=context, pattern=self, result=result)
+            return result
         except Exception as exc:
             await runtime.on_pattern_error(context=context, pattern=self, error=exc)
             raise
@@ -424,6 +452,8 @@ class DAGPattern(AgentPattern):
             if interrupted is not None:
                 return interrupted
             raise
+        except RequiredToolCallError:
+            raise
         except Exception as exc:  # noqa: BLE001
             return await self._fail(
                 context=context,
@@ -464,6 +494,8 @@ class DAGPattern(AgentPattern):
                         )
                         if interrupted is not None:
                             return interrupted
+                        raise
+                    except RequiredToolCallError:
                         raise
                     except Exception as exc:  # noqa: BLE001
                         return await self._fail(
@@ -1056,12 +1088,15 @@ class DAGPattern(AgentPattern):
         failure_reason: str,
         checkpoint_label: str,
         failed_step_id: str | None = None,
+        extra_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.status = "failed"
         metadata: dict[str, Any] = {
             "status": self.status,
             "failure_reason": failure_reason,
         }
+        if extra_metadata:
+            metadata.update(extra_metadata)
         if failed_step_id is not None:
             metadata["failed_step_id"] = failed_step_id
         await runtime.checkpoint(
@@ -1206,6 +1241,8 @@ class DAGPattern(AgentPattern):
             )
             if interrupted is not None:
                 return interrupted
+            raise
+        except RequiredToolCallError:
             raise
         except Exception as exc:  # noqa: BLE001
             return await self._fail(
