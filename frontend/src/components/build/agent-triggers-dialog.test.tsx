@@ -2131,8 +2131,8 @@ describe("AgentTriggersDialog schedule recurrence", () => {
     return () => lastBody
   }
 
-  async function openScheduleDraft() {
-    render(<AgentTriggersDialog agentId={42} open onOpenChange={vi.fn()} />)
+  async function openScheduleDraft(onOpenChange: () => void = vi.fn()) {
+    render(<AgentTriggersDialog agentId={42} open onOpenChange={onOpenChange} />)
     const [, scheduledCardSwitch] = await screen.findAllByRole("switch")
     fireEvent.click(scheduledCardSwitch)
     await screen.findByText("triggers.schedule.recurrenceLabel")
@@ -2223,6 +2223,86 @@ describe("AgentTriggersDialog schedule recurrence", () => {
       timezone: expect.any(String),
       day_of_month: 1,
       start_at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    })
+  })
+
+  // The footer's Done sits next to the editor's own Save, so it reads as
+  // "confirm" — and it used to close the dialog and drop the draft without a
+  // word, which is how a schedule edited from daily to every-5-minutes could
+  // look applied while the server still held the old daily config.
+  it("refuses to close on Done while the open editor holds unsaved edits", async () => {
+    const onOpenChange = vi.fn()
+    const daily = makeTrigger({
+      id: 46,
+      type: "scheduled",
+      name: "test",
+      config: {
+        recurrence: "daily",
+        time_of_day: "11:30",
+        timezone: "Asia/Shanghai",
+        start_at: "2026-08-19",
+      },
+    })
+    let patchedBody: Record<string, unknown> | null = null
+    apiRequestMock.mockImplementation((url: string, init?: { method?: string; body?: string }) => {
+      if (url === GMAIL_ACCOUNTS_URL) return Promise.resolve(jsonResponse([]))
+      if (url === TRIGGERS_URL && (!init?.method || init.method === "GET")) {
+        return Promise.resolve(jsonResponse([daily]))
+      }
+      if (url === `${TRIGGERS_URL}/46` && init?.method === "PATCH") {
+        patchedBody = init.body ? JSON.parse(init.body) : null
+        return Promise.resolve(jsonResponse(daily))
+      }
+      return Promise.resolve(jsonResponse([]))
+    })
+
+    render(<AgentTriggersDialog agentId={42} open onOpenChange={onOpenChange} />)
+
+    fireEvent.click(await screen.findByText("triggers.cards.scheduled.title"))
+    fireEvent.click(await screen.findByRole("button", { name: "triggers.actions.edit" }))
+    await screen.findByText("triggers.schedule.recurrenceLabel")
+
+    fireEvent.click(screen.getByText("triggers.schedule.custom"))
+    fireEvent.change(await screen.findByLabelText("triggers.schedule.runEvery"), {
+      target: { value: "5" },
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "common.done" }))
+    await waitFor(() => {
+      expect(toastMocks.error).toHaveBeenCalledWith("triggers.messages.unsavedDraft")
+    })
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(patchedBody).toBeNull()
+
+    // Save is right there in the form and still persists the same edit.
+    fireEvent.click(screen.getByRole("button", { name: "triggers.actions.saveSchedule" }))
+    await waitFor(() => {
+      expect(patchedBody).not.toBeNull()
+    })
+    expect((patchedBody as unknown as { config: Record<string, unknown> }).config).toEqual({
+      recurrence: "custom",
+      interval_seconds: 300,
+      next_run_at: expect.any(String),
+    })
+  })
+
+  // The guard is about the USER's own edits: an untouched draft (or one only
+  // the auto-binding effects filled in) must still close on the first click,
+  // which is what the Done tests elsewhere in this file rely on.
+  it("still closes on Done after an edit has been saved", async () => {
+    const onOpenChange = vi.fn()
+    const getBody = mockCreate()
+    await openScheduleDraft(onOpenChange)
+
+    fireEvent.click(screen.getByText("triggers.schedule.custom"))
+    fireEvent.change(await screen.findByLabelText("triggers.schedule.runEvery"), {
+      target: { value: "5" },
+    })
+    await saveAndGetConfig(getBody)
+
+    fireEvent.click(screen.getByRole("button", { name: "common.done" }))
+    await waitFor(() => {
+      expect(onOpenChange).toHaveBeenCalledWith(false)
     })
   })
 

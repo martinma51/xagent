@@ -4047,6 +4047,7 @@ const zh = {
       disabled: "Trigger 已停用",
       deleted: "Trigger 已删除",
       saveFailed: "保存 Trigger 失败",
+      unsavedDraft: "有未保存的改动：点 Save 保存，或点 Cancel 放弃",
       deleteFailed: "删除 Trigger 失败",
       secretRotated: "Webhook secret 已轮换",
       secretRotateFailed: "轮换 webhook secret 失败",

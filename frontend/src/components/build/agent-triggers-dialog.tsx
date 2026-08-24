@@ -540,8 +540,15 @@ export function AgentTriggersDialog({
   const [busyTypes, setBusyTypes] = useState<ReadonlySet<AgentTriggerType>>(new Set())
   // Local draft: field edits (other than the header/overview switch, which
   // persists immediately) only reach the server when Save is pressed —
-  // Cancel/Back/Done/switching selection all just discard this draft.
+  // Cancel/Back/dismissal/switching selection all just discard this draft.
+  // Done is the exception (see blocksExitOnUnsavedDraft).
   const [form, setForm] = useState<TriggerFormState>(emptyForm)
+  // True once the USER has edited the open draft — every field edit goes
+  // through setFormValue, and nothing else sets this. Programmatic form
+  // writes (navigation, the post-save resync, the single-account Gmail
+  // auto-bind) deliberately leave it false: there is nothing a user would
+  // miss losing. Only consulted while `editing`.
+  const [draftDirty, setDraftDirty] = useState(false)
   // True while a one-click test run is being started; drives the button's
   // "Running test…" state without blocking the rest of the editor.
   const [testing, setTesting] = useState(false)
@@ -724,6 +731,7 @@ export function AgentTriggersDialog({
     // entered through an explicit action (edit / add / first toggle-on).
     setActiveType(initialType)
     setEditing(false)
+    setDraftDirty(false)
     setSelectedTriggerId(null)
     setSecretReveal(null)
     setCopied(null)
@@ -785,6 +793,7 @@ export function AgentTriggersDialog({
     const key = formKeyFor(activeType, selectedTrigger?.id ?? null)
     if (syncedFormKeyRef.current === key) return
     syncedFormKeyRef.current = key
+    setDraftDirty(false)
     if (selectedTrigger) {
       setForm(formFromTrigger(selectedTrigger))
       void loadRunsFor(selectedTrigger)
@@ -812,6 +821,7 @@ export function AgentTriggersDialog({
     syncedFormKeyRef.current = formKeyFor(type, trigger?.id ?? null)
     setActiveType(type)
     setEditing(options.editing)
+    setDraftDirty(false)
     setSelectedTriggerId(trigger?.id ?? null)
     setDeleteConfirmId(null)
     setStagedTestRun(null)
@@ -848,6 +858,7 @@ export function AgentTriggersDialog({
     key: K,
     value: TriggerFormState[K],
   ) => {
+    setDraftDirty(true)
     setForm((current) => ({ ...current, [key]: value }))
   }
 
@@ -1221,6 +1232,7 @@ export function AgentTriggersDialog({
         syncedFormKeyRef.current = formKeyFor(saved.type, saved.id)
         setSelectedTriggerId(saved.id)
         setForm(formFromTrigger(saved))
+        setDraftDirty(false)
       } else {
         closeEditor()
       }
@@ -1234,16 +1246,32 @@ export function AgentTriggersDialog({
     }
   }
 
+  /** True (after saying so) when Done would silently drop the user's own
+   * unsaved edits. Done is the one exit whose label reads as "confirm" while
+   * sitting in the dialog footer next to the editor's own Save — pressing it
+   * threw the draft away without a word, which is how a schedule edited from
+   * daily to every-5-minutes could look applied while the server still held
+   * the old config. Cancel (explicit discard), Back and dismissal keep their
+   * documented discard-the-draft behaviour, each covered by its own test;
+   * this only stops the ambiguous one. Mirrors the secretReveal guard, which
+   * refuses to close for a related reason. */
+  const blocksExitOnUnsavedDraft = (): boolean => {
+    if (!editing || !draftDirty) return false
+    toast.error(t("triggers.messages.unsavedDraft"))
+    return true
+  }
+
   // Field edits are a local draft — only Save persists them. Back, Cancel,
   // switching pills, and Add all just discard the draft and navigate; nothing
-  // to await, nothing to lose (a fresh secret is separately protected below,
-  // since it's already unrecoverable server-side once unseen).
+  // to await (a fresh secret is separately protected below, since it's
+  // already unrecoverable server-side once unseen).
   const handleSave = () => {
     void handleSubmit()
   }
 
   const handleDone = () => {
     if (secretReveal) return
+    if (blocksExitOnUnsavedDraft()) return
     closeDialog(false)
   }
 
