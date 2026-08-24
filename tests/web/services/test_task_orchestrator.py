@@ -1711,8 +1711,90 @@ def test_finish_turn_mirrors_failed_task_to_trigger_run(db_session) -> None:
     finish_turn(db_session, int(task.id))
 
     db_session.refresh(run)
+    db_session.refresh(trigger)
     assert run.status == TriggerRunStatus.FAILED.value
     assert run.error_message == "Required MCP servers are unavailable."
+    # The trigger row is what the trigger list renders as this trigger's
+    # health. Mirroring onto TriggerRun alone left a trigger whose every run
+    # fails during execution reading as healthy forever.
+    assert trigger.last_error == "Required MCP servers are unavailable."
+
+
+def test_finish_turn_clears_trigger_last_error_on_completed_run(db_session) -> None:
+    """A run that succeeds must clear a previous failure off the trigger."""
+    user = _create_user(db_session)
+    agent = Agent(user_id=user.id, name="trigger agent")
+    db_session.add(agent)
+    db_session.flush()
+    trigger = AgentTrigger(
+        user_id=user.id,
+        agent_id=agent.id,
+        type=TriggerType.SCHEDULED.value,
+        name="scheduled test",
+        config={},
+        last_error="Required MCP servers are unavailable.",
+    )
+    db_session.add(trigger)
+    db_session.flush()
+    task = _create_task(db_session, user.id, status=TaskStatus.COMPLETED)
+    task.source = "trigger"
+    run = TriggerRun(
+        trigger_id=trigger.id,
+        task_id=task.id,
+        status=TriggerRunStatus.RUNNING.value,
+        idempotency_key="recovered-run",
+    )
+    db_session.add_all([task, run])
+    db_session.commit()
+
+    finish_turn(db_session, int(task.id))
+
+    db_session.refresh(run)
+    db_session.refresh(trigger)
+    assert run.status == TriggerRunStatus.COMPLETED.value
+    assert trigger.last_error is None
+
+
+def test_finish_turn_mirrors_backfilled_error_message_to_trigger(
+    db_session,
+) -> None:
+    """A FAILED task with no message of its own still flags the trigger.
+
+    finish_turn backfills the task's own error_message first, so the trigger
+    must end up carrying that same backfilled text rather than None.
+    """
+    user = _create_user(db_session)
+    agent = Agent(user_id=user.id, name="trigger agent")
+    db_session.add(agent)
+    db_session.flush()
+    trigger = AgentTrigger(
+        user_id=user.id,
+        agent_id=agent.id,
+        type=TriggerType.SCHEDULED.value,
+        name="scheduled test",
+        config={},
+    )
+    db_session.add(trigger)
+    db_session.flush()
+    task = _create_task(db_session, user.id, status=TaskStatus.FAILED)
+    task.source = "trigger"
+    run = TriggerRun(
+        trigger_id=trigger.id,
+        task_id=task.id,
+        status=TriggerRunStatus.RUNNING.value,
+        idempotency_key="failure-without-message",
+    )
+    db_session.add_all([task, run])
+    db_session.commit()
+
+    finish_turn(db_session, int(task.id))
+
+    db_session.refresh(run)
+    db_session.refresh(trigger)
+    backfilled = "Task execution failed (see /steps for details)"
+    assert run.status == TriggerRunStatus.FAILED.value
+    assert run.error_message == backfilled
+    assert trigger.last_error == backfilled
 
 
 # ---------------------------------------------------------------------------

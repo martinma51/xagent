@@ -4279,3 +4279,26 @@ def test_finish_turn_syncs_trigger_run_status() -> None:
         assert run.error_message is None
     finally:
         db.close()
+
+
+def test_apply_run_outcome_to_trigger_never_clears_a_failure_silently() -> None:
+    """A failed outcome must always leave a readable last_error behind.
+
+    The trigger list renders last_error as the trigger's health and
+    _mark_trigger_run_started clears it when each run begins, so writing None
+    for a failure would report a broken trigger as healthy. Callers pass the
+    settled run's message straight through; this guards the case where there
+    isn't one.
+    """
+    from xagent.web.services.triggers import apply_run_outcome_to_trigger
+
+    trigger = AgentTrigger(type="scheduled", name="t", config={})
+
+    apply_run_outcome_to_trigger(trigger, failed=True, error_message=None)
+    assert trigger.last_error == "Trigger run failed"
+
+    apply_run_outcome_to_trigger(trigger, failed=True, error_message="boom")
+    assert trigger.last_error == "boom"
+
+    apply_run_outcome_to_trigger(trigger, failed=False, error_message=None)
+    assert trigger.last_error is None

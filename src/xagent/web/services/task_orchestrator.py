@@ -1584,7 +1584,8 @@ def sync_trigger_run_status(
     error_message: str | None = None,
 ) -> bool:
     """Best-effort mirror from task terminal state to trigger run history."""
-    from ..models.trigger import TriggerRun, TriggerRunStatus
+    from ..models.trigger import AgentTrigger, TriggerRun, TriggerRunStatus
+    from .triggers import apply_run_outcome_to_trigger
 
     rows = (
         bg_db.query(TriggerRun)
@@ -1605,6 +1606,7 @@ def sync_trigger_run_status(
         if status == TaskStatus.COMPLETED
         else TriggerRunStatus.FAILED.value
     )
+    failed = run_status == TriggerRunStatus.FAILED.value
     for run in rows:
         run.status = run_status
         run.finished_at = now
@@ -1613,6 +1615,18 @@ def sync_trigger_run_status(
         else:
             run.error_message = None
         bg_db.add(run)
+        # The owning trigger is what the trigger list renders as this
+        # trigger's health, and _mark_trigger_run_started cleared its
+        # last_error when this run began. Mirroring onto TriggerRun alone
+        # therefore left a trigger whose every run fails during EXECUTION
+        # (strict MCP setup, for one) reading as healthy indefinitely, with
+        # the failure visible only by opening the run's task.
+        trigger = bg_db.get(AgentTrigger, int(run.trigger_id))
+        if trigger is not None:
+            apply_run_outcome_to_trigger(
+                trigger, failed=failed, error_message=run.error_message
+            )
+            bg_db.add(trigger)
     return True
 
 

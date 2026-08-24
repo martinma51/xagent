@@ -1450,6 +1450,36 @@ def _mark_run_failed(
     db.commit()
 
 
+# A run that settles as FAILED must always leave a non-null last_error behind:
+# the trigger list renders that field as the trigger's health, and
+# _mark_trigger_run_started clears it at the start of every run. A task can
+# reach FAILED without an error_message of its own (finish_turn's "returned
+# with status=RUNNING" path is one), so fall back to a generic message rather
+# than writing None and reporting a failing trigger as healthy.
+_RUN_FAILED_WITHOUT_MESSAGE = "Trigger run failed"
+
+
+def apply_run_outcome_to_trigger(
+    trigger: AgentTrigger,
+    *,
+    failed: bool,
+    error_message: str | None,
+) -> None:
+    """Mirror one settled run's outcome onto the trigger row the UI reads.
+
+    Shared by both settlement owners so they cannot drift: the orchestrator's
+    ``sync_trigger_run_status`` (the path every dispatcher-started run takes)
+    and ``_finish_trigger_run_after_task`` (the wait_for_completion path).
+    Failures BEFORE a run starts are already covered by ``_mark_run_failed``;
+    without this, only those were ever visible on the trigger itself.
+    """
+    setattr(
+        trigger,
+        "last_error",
+        (error_message or _RUN_FAILED_WITHOUT_MESSAGE) if failed else None,
+    )
+
+
 def _trigger_task_title(trigger: AgentTrigger, prompt: str) -> str:
     title = f"{trigger.name}: {prompt[:50]}"
     if len(title) > 80:
@@ -1832,14 +1862,29 @@ def _finish_trigger_run_after_task(start: _PreparedTriggerStart) -> None:
         run = db.query(TriggerRun).filter(TriggerRun.id == start.run_id).first()
         if task is None or run is None:
             return
+        trigger = (
+            db.query(AgentTrigger).filter(AgentTrigger.id == start.trigger_id).first()
+        )
+        settled_failed: bool | None = None
         if task.status == TaskStatus.COMPLETED:
             setattr(run, "status", TriggerRunStatus.COMPLETED.value)
             setattr(run, "error_message", None)
+            settled_failed = False
         elif task.status == TaskStatus.FAILED:
             setattr(run, "status", TriggerRunStatus.FAILED.value)
             setattr(run, "error_message", task.error_message)
+            settled_failed = True
         setattr(run, "finished_at", _now())
         db.add(run)
+        # A non-terminal task (PAUSED, ...) settles nothing here, so it must
+        # not touch last_error either — only the two branches above did.
+        if trigger is not None and settled_failed is not None:
+            apply_run_outcome_to_trigger(
+                trigger,
+                failed=settled_failed,
+                error_message=run.error_message,
+            )
+            db.add(trigger)
         db.commit()
     finally:
         db.close()
