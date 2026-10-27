@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Callable, Iterator, Optional
+from typing import Annotated, Any, Callable, Iterator, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from xagent.core.memory.base import MemoryStore
@@ -21,6 +21,23 @@ from ..user_isolated_memory import UserContext
 
 logger = logging.getLogger(__name__)
 MEMORY_READ_UNAVAILABLE_DETAIL = "Memory storage is temporarily unavailable."
+
+# Every memory ID is minted as ``str(uuid.uuid4())`` (``MemoryNote.id``'s
+# default and the LanceDB store's fallback for an empty ID), so the routes
+# accept exactly that canonical lowercase UUID4 form and reject anything else
+# with a 422 before the value reaches a store or a backend filter expression.
+MEMORY_ID_PATTERN = (
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+MemoryIdPath = Annotated[
+    str,
+    Path(
+        pattern=MEMORY_ID_PATTERN,
+        min_length=36,
+        max_length=36,
+        description="Memory ID (canonical lowercase UUID4)",
+    ),
+]
 
 
 @contextmanager
@@ -232,7 +249,7 @@ class MemoryManagementRouter:
 
         @self.router.delete("/{memory_id}")
         async def delete_memory(
-            memory_id: str, user: User = Depends(get_current_user)
+            memory_id: MemoryIdPath, user: User = Depends(get_current_user)
         ) -> dict[str, Any]:
             try:
                 # Set user context for memory operations
@@ -256,7 +273,7 @@ class MemoryManagementRouter:
 
         @self.router.put("/{memory_id}")
         async def update_memory(
-            memory_id: str,
+            memory_id: MemoryIdPath,
             update_request: MemoryUpdateRequest,
             user: User = Depends(get_current_user),
         ) -> dict[str, Any]:
@@ -414,7 +431,7 @@ class MemoryManagementRouter:
 
         @self.router.get("/{memory_id}")
         async def get_memory(
-            memory_id: str, user: User = Depends(get_current_user)
+            memory_id: MemoryIdPath, user: User = Depends(get_current_user)
         ) -> dict[str, Any]:
             try:
                 # Set user context for memory operations

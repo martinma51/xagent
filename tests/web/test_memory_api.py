@@ -4,6 +4,7 @@ import os
 import tempfile
 from datetime import datetime
 from unittest.mock import Mock
+from urllib.parse import quote
 
 import pytest
 from fastapi import FastAPI
@@ -18,6 +19,13 @@ from xagent.web.api.memory import MemoryManagementRouter
 from xagent.web.auth_config import JWT_ALGORITHM, JWT_SECRET_KEY
 from xagent.web.models.database import Base, get_db
 from xagent.web.models.user import User
+
+# Memory IDs are minted as str(uuid.uuid4()); the routes accept only that form.
+MEMORY_ID_1 = "0b7a6a52-3f1e-4c3a-9d55-1f0c8e2a7b11"
+MEMORY_ID_2 = "5d2c9e40-8a6b-4f7d-b3c1-6e9f2a4d8c22"
+MISSING_MEMORY_ID = "9e8d7c6b-5a49-4382-a716-2f3e4d5c6b33"
+OTHER_MEMORY_ID = "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c44"
+CRD_MEMORY_ID = "7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2955"
 
 # Create temporary directory for database
 temp_dir = tempfile.mkdtemp()
@@ -116,7 +124,7 @@ def sample_memory_notes():
     """Create sample memory notes for testing."""
     return [
         MemoryNote(
-            id="memory_1",
+            id=MEMORY_ID_1,
             content="Test memory 1",
             keywords=["test", "sample"],
             tags=["important"],
@@ -126,7 +134,7 @@ def sample_memory_notes():
             mime_type="text/plain",
         ),
         MemoryNote(
-            id="memory_2",
+            id=MEMORY_ID_2,
             content="Test memory 2",
             keywords=["test", "example"],
             tags=["normal"],
@@ -318,24 +326,24 @@ class TestMemoryGetEndpoint:
     ):
         """Test successful memory retrieval."""
         mock_memory_store.get.return_value = Mock(
-            success=True, memory_id="memory_1", content=sample_memory_notes[0]
+            success=True, memory_id=MEMORY_ID_1, content=sample_memory_notes[0]
         )
 
-        response = client.get("/api/memory/memory_1", headers=auth_headers)
+        response = client.get(f"/api/memory/{MEMORY_ID_1}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["id"] == "memory_1"
+        assert data["id"] == MEMORY_ID_1
         assert data["content"] == "Test memory 1"
         assert "context" not in data  # Ensure context field is not present
 
     def test_get_memory_not_found(self, client, mock_memory_store, auth_headers):
         """Test memory retrieval for non-existent ID."""
         mock_memory_store.get.return_value = Mock(
-            success=False, error="Memory not found", memory_id="non_existent"
+            success=False, error="Memory not found", memory_id=MISSING_MEMORY_ID
         )
 
-        response = client.get("/api/memory/non_existent", headers=auth_headers)
+        response = client.get(f"/api/memory/{MISSING_MEMORY_ID}", headers=auth_headers)
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
@@ -345,7 +353,7 @@ class TestMemoryGetEndpoint:
         # Setup mock to raise exception
         mock_memory_store.get.side_effect = Exception("Database error")
 
-        response = client.get("/api/memory/test_id", headers=auth_headers)
+        response = client.get(f"/api/memory/{OTHER_MEMORY_ID}", headers=auth_headers)
 
         assert response.status_code == 500
         assert "Failed to get memory" in response.json()["detail"]
@@ -463,7 +471,7 @@ class TestMemoryUpdateEndpoint:
         }
 
         response = client.put(
-            "/api/memory/memory_1", json=update_data, headers=auth_headers
+            f"/api/memory/{MEMORY_ID_1}", json=update_data, headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -477,7 +485,7 @@ class TestMemoryUpdateEndpoint:
         assert isinstance(call_args, MemoryNote)
         assert call_args.content == "Updated content"
         assert call_args.keywords == ["updated"]
-        assert call_args.id == "memory_1"
+        assert call_args.id == MEMORY_ID_1
 
     def test_update_memory_not_found(self, client, mock_memory_store, auth_headers):
         """Test memory update for non-existent ID."""
@@ -488,7 +496,7 @@ class TestMemoryUpdateEndpoint:
         update_data = {"content": "Updated content"}
 
         response = client.put(
-            "/api/memory/non_existent", json=update_data, headers=auth_headers
+            f"/api/memory/{MISSING_MEMORY_ID}", json=update_data, headers=auth_headers
         )
 
         assert response.status_code == 404
@@ -507,7 +515,7 @@ class TestMemoryUpdateEndpoint:
         update_data = {"content": "Only content updated"}
 
         response = client.put(
-            "/api/memory/memory_1", json=update_data, headers=auth_headers
+            f"/api/memory/{MEMORY_ID_1}", json=update_data, headers=auth_headers
         )
 
         assert response.status_code == 200
@@ -528,7 +536,7 @@ class TestMemoryUpdateEndpoint:
         update_data = {"content": "Updated content"}
 
         response = client.put(
-            "/api/memory/test_id", json=update_data, headers=auth_headers
+            f"/api/memory/{OTHER_MEMORY_ID}", json=update_data, headers=auth_headers
         )
 
         assert response.status_code == 500
@@ -542,7 +550,7 @@ class TestMemoryDeleteEndpoint:
         """Test successful memory deletion."""
         mock_memory_store.delete.return_value = Mock(success=True)
 
-        response = client.delete("/api/memory/memory_1", headers=auth_headers)
+        response = client.delete(f"/api/memory/{MEMORY_ID_1}", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -550,7 +558,7 @@ class TestMemoryDeleteEndpoint:
         assert "Memory deleted successfully" in data["message"]
 
         # Verify delete was called with correct ID
-        mock_memory_store.delete.assert_called_once_with("memory_1")
+        mock_memory_store.delete.assert_called_once_with(MEMORY_ID_1)
 
     def test_delete_memory_not_found(self, client, mock_memory_store, auth_headers):
         """Test memory deletion for non-existent ID."""
@@ -558,7 +566,9 @@ class TestMemoryDeleteEndpoint:
             success=False, error="Memory not found"
         )
 
-        response = client.delete("/api/memory/non_existent", headers=auth_headers)
+        response = client.delete(
+            f"/api/memory/{MISSING_MEMORY_ID}", headers=auth_headers
+        )
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
@@ -570,10 +580,76 @@ class TestMemoryDeleteEndpoint:
         # Setup mock to raise exception
         mock_memory_store.delete.side_effect = Exception("Database error")
 
-        response = client.delete("/api/memory/test_id", headers=auth_headers)
+        response = client.delete(f"/api/memory/{OTHER_MEMORY_ID}", headers=auth_headers)
 
         assert response.status_code == 500
         assert "Failed to delete memory" in response.json()["detail"]
+
+
+class TestMemoryIdValidation:
+    """Memory IDs must be canonical UUID4 strings before reaching the store."""
+
+    INVALID_IDS = [
+        "x' OR '1'='1",
+        "') OR (1=1",
+        "' OR true OR '",
+        "'",
+        "\\",
+        "a\\'b",
+        "memory_1",
+        MEMORY_ID_1.upper(),
+        MEMORY_ID_1.replace("-", ""),
+        "{" + MEMORY_ID_1 + "}",
+        MEMORY_ID_1 + "\n",
+        MEMORY_ID_1 + "' OR '1'='1",
+        # Canonical UUID, but version 1 rather than the version 4 we mint.
+        "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    ]
+
+    @staticmethod
+    def _path(memory_id: str) -> str:
+        return "/api/memory/" + quote(memory_id, safe="")
+
+    @pytest.mark.parametrize("memory_id", INVALID_IDS)
+    def test_get_rejects_invalid_id(
+        self, client, mock_memory_store, auth_headers, memory_id
+    ):
+        response = client.get(self._path(memory_id), headers=auth_headers)
+
+        assert response.status_code == 422
+        mock_memory_store.get.assert_not_called()
+
+    @pytest.mark.parametrize("memory_id", INVALID_IDS)
+    def test_update_rejects_invalid_id(
+        self, client, mock_memory_store, auth_headers, memory_id
+    ):
+        response = client.put(
+            self._path(memory_id), json={"content": "x"}, headers=auth_headers
+        )
+
+        assert response.status_code == 422
+        mock_memory_store.get.assert_not_called()
+        mock_memory_store.update.assert_not_called()
+
+    @pytest.mark.parametrize("memory_id", INVALID_IDS)
+    def test_delete_rejects_invalid_id(
+        self, client, mock_memory_store, auth_headers, memory_id
+    ):
+        response = client.delete(self._path(memory_id), headers=auth_headers)
+
+        assert response.status_code == 422
+        mock_memory_store.delete.assert_not_called()
+
+    def test_generated_memory_id_is_accepted(
+        self, client, mock_memory_store, auth_headers
+    ):
+        memory_id = MemoryNote(content="x").id
+        mock_memory_store.delete.return_value = Mock(success=True)
+
+        response = client.delete(self._path(memory_id), headers=auth_headers)
+
+        assert response.status_code == 200
+        mock_memory_store.delete.assert_called_once_with(memory_id)
 
 
 class TestMemoryStatsEndpoint:
@@ -639,15 +715,15 @@ class TestMemoryApiIntegration:
         # Setup mock responses
         def mock_add_side_effect(note):
             # Return the memory with the provided content
-            return Mock(success=True, memory_id="test_memory_123")
+            return Mock(success=True, memory_id=CRD_MEMORY_ID)
 
         def mock_get_side_effect(memory_id):
-            if memory_id == "test_memory_123":
+            if memory_id == CRD_MEMORY_ID:
                 # Create a memory note with the test data
                 from xagent.core.memory.core import MemoryNote
 
                 test_memory = MemoryNote(
-                    id="test_memory_123",
+                    id=CRD_MEMORY_ID,
                     content="CRD test memory",
                     keywords=["test", "crd"],
                     tags=[],
@@ -828,7 +904,7 @@ class TestMemoryApiUsage:
             MemoryResponse(success=True)
         )
         response = client.put(
-            "/api/memory/memory_1", json={"content": "new"}, headers=auth_headers
+            f"/api/memory/{MEMORY_ID_1}", json={"content": "new"}, headers=auth_headers
         )
 
         assert response.status_code == 200
