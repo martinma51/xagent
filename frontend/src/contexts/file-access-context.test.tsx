@@ -241,12 +241,32 @@ describe("FileAccessProvider", () => {
     })
   })
 
-  it("does not expose getStreamingUrl on the public policy", () => {
-    const policy = createPublicFileAccessPolicy("guest-token")
-    expect(policy.getStreamingUrl).toBeUndefined()
+  it("builds public file URLs that never carry the guest token", () => {
+    const policy = createPublicFileAccessPolicy("guest-secret-token")
+    const urls = [
+      policy.previewUrl("file/id"),
+      policy.downloadUrl("file/id"),
+      policy.inlinePreviewUrl("file/id"),
+      policy.inlineDownloadUrl("file/id"),
+      policy.relativePreviewUrl("file/id", "slides/one.png"),
+      policy.validationUrl?.("file/id") ?? "",
+    ]
+    for (const url of urls) {
+      expect(url).not.toContain("guest-secret-token")
+      expect(url).not.toMatch(/[?&]token=/)
+    }
+    expect(policy.downloadUrl("file/id")).toBe("/api/files/public/download/file%2Fid")
+    expect(policy.relativePreviewUrl("file/id", "slides/one.png")).toBe(
+      "/api/files/public/preview/file%2Fid?relative_path=slides%2Fone.png",
+    )
+    expect(policy.validationUrl?.("file/id")).toBe(
+      "/api/files/public/preview/file%2Fid?validation_only=true",
+    )
+    // Media elements cannot send the header: they must not load previewUrl directly.
+    expect(policy.requiresBlobFetch).toBe(true)
   })
 
-  it("keeps public file URLs and requests scoped to each provider", async () => {
+  it("sends each provider's guest token only as an Authorization header", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response())
     vi.stubGlobal("fetch", fetchMock)
 
@@ -261,65 +281,24 @@ describe("FileAccessProvider", () => {
       </>,
     )
 
-    expect(screen.getByTestId("first")).toHaveTextContent("token=first-token")
-    expect(screen.getByTestId("first")).not.toHaveTextContent("second-token")
-    expect(screen.getByTestId("second")).toHaveTextContent("token=second-token")
-    expect(screen.getByTestId("second")).not.toHaveTextContent("first-token")
-    const firstPolicy = createPublicFileAccessPolicy("first-token")
-    expect(firstPolicy.downloadUrl("file/id")).toContain(
-      "/api/files/public/download/file%2Fid?token=first-token",
-    )
-    expect(firstPolicy.relativePreviewUrl("file/id", "slides/one.png")).toContain(
-      "token=first-token&relative_path=slides%2Fone.png",
-    )
+    expect(screen.getByTestId("first")).not.toHaveTextContent("token")
+    expect(screen.getByTestId("second")).not.toHaveTextContent("token")
 
     screen.getByTestId("first").click()
     screen.getByTestId("second").click()
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining("token=first-token"),
-      expect.objectContaining({ credentials: "same-origin" }),
-    )
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining("token=second-token"),
-      expect.objectContaining({ credentials: "same-origin" }),
-    )
-  })
-
-  it("keeps a surviving provider isolated when a neighboring provider unmounts", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response())
-    vi.stubGlobal("fetch", fetchMock)
-    const secondPolicy = createPublicFileAccessPolicy("surviving-token")
-    const renderProviders = (showFirst: boolean) => (
-      <>
-        {showFirst ? (
-          <FileAccessProvider policy={createPublicFileAccessPolicy("removed-token")}>
-            <FileAccessProbe id="removed" />
-          </FileAccessProvider>
-        ) : null}
-        <FileAccessProvider policy={secondPolicy}>
-          <FileAccessProbe id="surviving" />
-        </FileAccessProvider>
-      </>
-    )
-
-    const { rerender } = render(renderProviders(true))
-    rerender(renderProviders(false))
-
-    expect(screen.queryByTestId("removed")).toBeNull()
-    expect(screen.getByTestId("surviving")).toHaveTextContent("surviving-token")
-    screen.getByTestId("surviving").click()
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("token=surviving-token"),
-      expect.objectContaining({ credentials: "same-origin" }),
-    )
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>
+    expect(calls.map(([url]) => url)).toEqual([
+      "/api/files/public/preview/file-id",
+      "/api/files/public/preview/file-id",
+    ])
+    expect(new Headers(calls[0][1].headers).get("Authorization")).toBe("Bearer first-token")
+    expect(new Headers(calls[1][1].headers).get("Authorization")).toBe("Bearer second-token")
+    expect(calls.every(([, options]) => options.credentials === "same-origin")).toBe(true)
     expect(sessionStorage.getItem("xagent_public_access_token")).toBeNull()
   })
 
-  it("allows same-origin routing cookies but strips ambient Authorization", async () => {
+  it("replaces ambient Authorization and never sends the guest token elsewhere", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response())
     vi.stubGlobal("fetch", fetchMock)
     const policy = createPublicFileAccessPolicy("guest-token")
@@ -328,10 +307,59 @@ describe("FileAccessProvider", () => {
       headers: { Authorization: "Bearer ambient-user-token", "X-Trace": "request" },
       credentials: "include",
     })
+    await policy.request("https://elsewhere.example/api/files/public/preview/file-id", {
+      headers: { Authorization: "Bearer ambient-user-token" },
+    })
+    await policy.request("/api/files/preview/file-id")
 
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(options.credentials).toBe("same-origin")
-    expect(new Headers(options.headers).get("Authorization")).toBeNull()
-    expect(new Headers(options.headers).get("X-Trace")).toBe("request")
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>
+    expect(calls[0][1].credentials).toBe("same-origin")
+    expect(new Headers(calls[0][1].headers).get("Authorization")).toBe("Bearer guest-token")
+    expect(new Headers(calls[0][1].headers).get("X-Trace")).toBe("request")
+    expect(new Headers(calls[1][1].headers).get("Authorization")).toBeNull()
+    expect(new Headers(calls[2][1].headers).get("Authorization")).toBeNull()
+  })
+
+  it("mints a file-bound ticket over the header for URLs the browser loads itself", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(
+      JSON.stringify({ ticket: "ticket.abc-123", expires_in: 600 }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ))
+    vi.stubGlobal("fetch", fetchMock)
+    const policy = createPublicFileAccessPolicy("guest-token")
+
+    const streamingUrl = await policy.getStreamingUrl?.("file/id")
+    const assetUrl = await policy.authorizeBrowserUrl?.(
+      policy.relativePreviewUrl("file/id", "img/a.png"),
+    )
+
+    expect(streamingUrl).toBe("/api/files/public/preview/file%2Fid?ticket=ticket.abc-123")
+    expect(assetUrl).toBe(
+      "/api/files/public/preview/file%2Fid?relative_path=img%2Fa.png&ticket=ticket.abc-123",
+    )
+    expect(streamingUrl).not.toContain("guest-token")
+    // One mint per file while the ticket is fresh.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [mintUrl, mintOptions] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(mintUrl).toBe("/api/files/public/tickets/file%2Fid")
+    expect(mintOptions.method).toBe("POST")
+    expect(new Headers(mintOptions.headers).get("Authorization")).toBe("Bearer guest-token")
+  })
+
+  it("refuses to sign foreign URLs or accept a malformed ticket response", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(
+      JSON.stringify({ ticket: "bad ticket", expires_in: 600 }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ))
+    vi.stubGlobal("fetch", fetchMock)
+    const policy = createPublicFileAccessPolicy("guest-token")
+
+    await expect(policy.authorizeBrowserUrl?.("https://elsewhere.example/x.png"))
+      .rejects.toThrow("Not a public file URL")
+    await expect(policy.authorizeBrowserUrl?.("/api/files/preview/file-id"))
+      .rejects.toThrow("Not a public file URL")
+    expect(fetchMock).not.toHaveBeenCalled()
+    await expect(policy.getStreamingUrl?.("file-id"))
+      .rejects.toThrow("File ticket response has an unexpected shape")
   })
 })

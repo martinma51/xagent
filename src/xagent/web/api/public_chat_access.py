@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import secrets
@@ -11,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum, auto
 from typing import Any, Callable, Protocol, TypeGuard, TypeVar
 
-from fastapi import Depends, HTTPException, Query, UploadFile, WebSocket
+from fastapi import Depends, HTTPException, UploadFile, WebSocket
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -57,7 +59,12 @@ from ..services.task_interaction_service import (
 from ..services.task_runtime import sanitize_client_agent_config
 from ..services.workforce_runs import create_workforce_run
 from ..utils.db_timezone import format_datetime_for_api
-from .files import store_uploaded_files
+from ..websocket_credentials import (
+    InvalidWebSocketCredentials,
+    websocket_header_token,
+    websocket_query_carries_credential,
+)
+from .files import PublicFileCredential, store_uploaded_files
 from .websocket import (
     WebSocketPrincipal,
     handle_chat_message,
@@ -67,7 +74,10 @@ from .websocket import (
     manager,
     send_message_delivery,
 )
-from .websocket_auth import send_websocket_authentication_infrastructure_failure
+from .websocket_auth import (
+    accept_authenticated_websocket,
+    send_websocket_authentication_infrastructure_failure,
+)
 
 logger = logging.getLogger(__name__)
 db_session_context = contextmanager(get_db)
@@ -382,10 +392,19 @@ def get_public_chat_user(
     db: Session,
     *,
     expected_auth_mode: str | None = None,
+    verified_claims: dict[str, Any] | None = None,
 ) -> PublicChatAccessContext:
-    """Get public chat access context from a widget/share token."""
+    """Get public chat access context from a widget/share token.
+
+    ``verified_claims`` replaces decoding ``token`` when the caller already
+    verified the guest claims itself (a redeemed public file ticket).
+    """
     try:
-        payload = _decode_public_token(token)
+        payload = (
+            verified_claims
+            if verified_claims is not None
+            else _decode_public_token(token)
+        )
         if payload.get("type") != "widget":
             raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_TOKEN)
 
@@ -496,10 +515,23 @@ def get_public_chat_user(
         raise
 
 
-def get_share_chat_user(token: str, db: Session) -> ShareChatAccessContext:
-    """Get share chat access context from a share token."""
+def get_share_chat_user(
+    token: str,
+    db: Session,
+    *,
+    verified_claims: dict[str, Any] | None = None,
+) -> ShareChatAccessContext:
+    """Get share chat access context from a share token.
+
+    ``verified_claims`` replaces decoding ``token`` when the caller already
+    verified the guest claims itself (a redeemed public file ticket).
+    """
     try:
-        payload = _decode_public_token(token)
+        payload = (
+            verified_claims
+            if verified_claims is not None
+            else _decode_public_token(token)
+        )
         if payload.get("type") != "widget":
             raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_TOKEN)
 
@@ -580,6 +612,164 @@ def get_share_chat_user(token: str, db: Session) -> ShareChatAccessContext:
         if projected is not None:
             raise projected from None
         raise
+
+
+# A guest token rides in the Authorization header. Browser-loaded file URLs
+# (media elements, HTML preview subresources) cannot set headers, so the guest
+# exchanges its header credential for a short-lived ticket bound to one file.
+# The ticket is not a guest login: it reads that one file (and the relative
+# assets under it) and nothing else. Because the ticket JWT is only signed,
+# never encrypted, the deployment secret the guest token carries (share token
+# or widget key) is replaced by its digest; redemption restores it from the
+# live deployment, so rotating or disabling the link still revokes tickets.
+PUBLIC_FILE_TICKET_TYPE = "public_file_ticket"
+_DEPLOYMENT_SECRET_DIGEST_CLAIM = "deployment_secret_sha256"
+_GUEST_SECRET_CLAIMS = ("share_token", "widget_key")
+_GUEST_TIME_CLAIMS = ("exp", "iat", "nbf")
+
+
+def _deployment_secret_digest(secret: str) -> str:
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def _guest_secret_claim(guest: dict[str, Any]) -> str:
+    return "share_token" if guest.get("auth_mode") == "share" else "widget_key"
+
+
+def create_public_file_ticket(
+    token: str, db: Session, *, file_id: str, ttl_seconds: int
+) -> str:
+    """Exchange a live guest token for a ticket bound to ``file_id``.
+
+    The caller checks the guest may read that file; this re-derives the guest's
+    access from the token so no ticket is minted for a revoked guest.
+    """
+    try:
+        payload = _decode_public_token(token)
+    except Exception as exc:
+        projected = _project_public_token_failure(
+            exc, invalid_detail="Invalid guest token"
+        )
+        if projected is not None:
+            raise projected from None
+        raise
+    if payload.get("auth_mode") == "share":
+        get_share_chat_user(token, db)
+    else:
+        get_public_chat_user(token, db)
+    guest = {
+        key: value
+        for key, value in payload.items()
+        if key not in _GUEST_SECRET_CLAIMS and key not in _GUEST_TIME_CLAIMS
+    }
+    secret = payload.get(_guest_secret_claim(payload))
+    if isinstance(secret, str) and secret:
+        guest[_DEPLOYMENT_SECRET_DIGEST_CLAIM] = _deployment_secret_digest(secret)
+    claims = {
+        "type": PUBLIC_FILE_TICKET_TYPE,
+        "file_id": file_id,
+        "guest": guest,
+        "exp": datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+    }
+    encoded: str = jwt.encode(claims, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return encoded
+
+
+def verify_public_file_ticket(ticket: str, file_id: str) -> dict[str, Any]:
+    """Check signature, expiry, purpose and file binding; no database access."""
+    try:
+        claims = jwt.decode(ticket, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    except JWTError:
+        claims = None
+    if (
+        type(claims) is not dict
+        or claims.get("type") != PUBLIC_FILE_TICKET_TYPE
+        or claims.get("file_id") != file_id
+        or type(claims.get("guest")) is not dict
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+    return claims
+
+
+def _current_deployment_secret(db: Session, guest: dict[str, Any]) -> str | None:
+    """The live share token / widget key for the guest's deployment."""
+    prefix = "share" if guest.get("auth_mode") == "share" else "widget"
+    workforce_id = guest.get(f"{prefix}_workforce_id")
+    agent_id = guest.get(f"{prefix}_agent_id")
+    dialect_name = str(db.get_bind().dialect.name)
+    row: object | None
+    # Same precedence as the claim validators: a workforce id wins.
+    if _is_strict_int(workforce_id):
+        workforce_id = _require_bindable_public_id(workforce_id, dialect_name)
+        row = get_deployment(db, DeploymentOwnerType.WORKFORCE, workforce_id)
+    elif _is_strict_int(agent_id):
+        agent_id = _require_bindable_public_id(agent_id, dialect_name)
+        row = db.query(Agent).filter(Agent.id == agent_id).first()
+    else:
+        return None
+    value = getattr(row, _guest_secret_claim(guest), None) if row else None
+    return value if isinstance(value, str) and value else None
+
+
+def _guest_claims_from_ticket(
+    ticket_claims: dict[str, Any], db: Session
+) -> dict[str, Any]:
+    """Restore the guest claims a verified ticket carries.
+
+    A rotated or removed deployment secret no longer matches the digest, which
+    revokes the ticket exactly as it revokes the guest token it came from.
+    """
+    guest = dict(ticket_claims["guest"])
+    digest = guest.pop(_DEPLOYMENT_SECRET_DIGEST_CLAIM, None)
+    if digest is None:
+        return guest
+    try:
+        current = _current_deployment_secret(db, guest)
+    except _PublicTokenRejected:
+        raise HTTPException(
+            status_code=401, detail="Invalid or expired ticket"
+        ) from None
+    if (
+        not isinstance(digest, str)
+        or current is None
+        or not hmac.compare_digest(digest, _deployment_secret_digest(current))
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Share link is unavailable"
+            if guest.get("auth_mode") == "share"
+            else "Widget is unavailable",
+        )
+    guest[_guest_secret_claim(guest)] = current
+    return guest
+
+
+def get_share_context_for_public_file(
+    credential: PublicFileCredential, db: Session
+) -> ShareChatAccessContext:
+    """Resolve share-guest access for a public file request."""
+    if credential.ticket_claims is None:
+        if not credential.token:
+            raise HTTPException(
+                status_code=403, detail="Public file access token required"
+            )
+        return get_share_chat_user(credential.token, db)
+    guest = _guest_claims_from_ticket(credential.ticket_claims, db)
+    return get_share_chat_user("", db, verified_claims=guest)
+
+
+def get_widget_context_for_public_file(
+    credential: PublicFileCredential, db: Session
+) -> PublicChatAccessContext:
+    """Resolve widget-guest access for a public file request."""
+    if credential.ticket_claims is None:
+        if not credential.token:
+            raise HTTPException(
+                status_code=403, detail="Public file access token required"
+            )
+        return get_public_chat_user(credential.token, db)
+    guest = _guest_claims_from_ticket(credential.ticket_claims, db)
+    return get_public_chat_user("", db, verified_claims=guest)
 
 
 security = HTTPBearer()
@@ -1466,11 +1656,45 @@ async def _reject_rate_limited_turn(websocket: WebSocket, message_data: dict) ->
         )
 
 
+def public_websocket_header_token(websocket: WebSocket) -> str | None:
+    """Return the guest token a public chat handshake carries in its headers.
+
+    Browsers send it in ``Sec-WebSocket-Protocol`` (the same ``xagent-auth-v1``
+    scheme private sockets use); non-browser clients may send
+    ``Authorization: Bearer``. The retired ``?token=`` URI contract yields
+    ``None`` even next to a valid header, so the long-lived guest token stops
+    reaching URL-logging proxies and clients cannot keep the old contract.
+    """
+    scope = websocket.scope
+    if websocket_query_carries_credential(scope):
+        return None
+    try:
+        return websocket_header_token(scope)
+    except InvalidWebSocketCredentials:
+        return None
+
+
+async def _accept_public_chat_websocket(
+    websocket: WebSocket, token: str | None
+) -> str | None:
+    """Accept the upgrade, then refuse a handshake that carried no credential.
+
+    Negotiates only the fixed ``xagent-auth-v1`` protocol (never the offered
+    credential). Accepting first keeps the 4003 close reason readable by the
+    client (see the accept-first comments in the endpoints below).
+    """
+    await accept_authenticated_websocket(websocket)
+    if token:
+        return token
+    await websocket.close(code=4003, reason="Authentication required")
+    return None
+
+
 async def public_chat_websocket_endpoint(
     *,
     websocket: WebSocket,
     task_id: int,
-    token: str = Query(..., description="Authentication token"),
+    token: str | None,
     expected_auth_mode: str,
 ) -> None:
     """Serve widget websocket chat with per-message revalidation."""
@@ -1494,7 +1718,9 @@ async def public_chat_websocket_endpoint(
     # first makes the 4003 below a real close whose reason reaches the widget
     # client, so a returning guest whose widget was revoked can tell an access
     # denial apart from a transport failure and recover.
-    await websocket.accept()
+    token = await _accept_public_chat_websocket(websocket, token)
+    if token is None:
+        return
     try:
         principal = await _authorize_public_chat_websocket(
             token=token,
@@ -1578,7 +1804,7 @@ async def share_chat_websocket_endpoint(
     *,
     websocket: WebSocket,
     task_id: int,
-    token: str = Query(..., description="Authentication token"),
+    token: str | None,
 ) -> None:
     """Serve share websocket chat with per-message revalidation."""
     # Handshake budget (#973): accept-before-auth (below) means every connect
@@ -1602,7 +1828,9 @@ async def share_chat_websocket_endpoint(
     # on — so the frontend can tell an access denial (e.g. a returning guest
     # whose persisted task belongs to another guest, or a pre-#973 legacy task)
     # apart from a transport failure and recover (#973).
-    await websocket.accept()
+    token = await _accept_public_chat_websocket(websocket, token)
+    if token is None:
+        return
     try:
         principal = await _authorize_share_chat_websocket(
             token=token,

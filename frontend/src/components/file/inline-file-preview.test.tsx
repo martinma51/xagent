@@ -58,6 +58,22 @@ import {
   defaultFileAccessPolicy,
 } from '@/contexts/file-access-context'
 
+/** Public file routes: tickets minted over the guest header, bytes otherwise. */
+function publicFileFetch() {
+  // The second parameter types mock.calls[n][1] as the request init.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  return vi.fn(async (url: string, _init?: RequestInit) => {
+    const minted = /\/api\/files\/public\/tickets\/([^/?]+)$/.exec(url)
+    if (minted) {
+      return new Response(
+        JSON.stringify({ ticket: `file-ticket-${minted[1]}`, expires_in: 600 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return new Response(new Blob(['media-bytes']), { status: 200 })
+  })
+}
+
 describe('InlineFilePreview', () => {
   beforeEach(() => {
     apiRequestMock.mockReset()
@@ -104,11 +120,12 @@ describe('InlineFilePreview', () => {
     })
   })
 
-  it('uses the provider-scoped public credential for image and audio elements', async () => {
-    // With the public policy the tokened URL is handed to the media element
-    // directly — no blob fetch is made (preserving HTTP range requests for
-    // media playback) and the authenticated apiRequest path is never touched.
-    const fetchMock = vi.fn()
+  it('loads public images over the guest header and streams audio from a file ticket', async () => {
+    // Neither media URL may carry the guest token: images are fetched with
+    // the Authorization header into a blob, and audio/video load a short-
+    // lived, file-bound ticket URL (minted over that header) so HTTP range
+    // requests still work. The authenticated apiRequest path is never used.
+    const fetchMock = publicFileFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(
@@ -125,15 +142,21 @@ describe('InlineFilePreview', () => {
     )
 
     const image = await screen.findByAltText('image.png')
-    expect(image.getAttribute('src')).toBe(
-      'http://api.local/api/files/public/preview/image-id?token=guest-a',
-    )
+    await waitFor(() => expect(image.getAttribute('src')).toMatch(/^blob:/))
     const audio = await screen.findByTitle('audio.mp3')
     expect(audio.tagName).toBe('AUDIO')
-    expect(audio.getAttribute('src')).toBe(
-      'http://api.local/api/files/public/preview/audio-id?token=guest-a',
-    )
-    expect(fetchMock).not.toHaveBeenCalled()
+    await waitFor(() => expect(audio.getAttribute('src')).toBe(
+      'http://api.local/api/files/public/preview/audio-id?ticket=file-ticket-audio-id',
+    ))
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>
+    expect(calls.map(([url]) => url)).toEqual(expect.arrayContaining([
+      'http://api.local/api/files/public/preview/image-id',
+      'http://api.local/api/files/public/tickets/audio-id',
+    ]))
+    for (const [url, init] of calls) {
+      expect(url).not.toContain('guest-a')
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer guest-a')
+    }
     expect(apiRequestMock).not.toHaveBeenCalled()
   })
 
@@ -327,10 +350,10 @@ describe('InlineFilePreview', () => {
     )
   })
 
-  it('streams video directly from the tokened URL under the public policy', async () => {
+  it('streams public video from a file ticket instead of the guest token', async () => {
     // Range requests only work when the media element loads the URL itself;
     // a blob fetch would force the full download before playback starts.
-    const fetchMock = vi.fn()
+    const fetchMock = publicFileFetch()
     vi.stubGlobal('fetch', fetchMock)
 
     render(
@@ -343,22 +366,25 @@ describe('InlineFilePreview', () => {
 
     const video = await screen.findByLabelText('clip.mp4')
     expect(video.tagName.toLowerCase()).toBe('video')
-    expect(video.getAttribute('src')).toBe(
-      'http://api.local/api/files/public/preview/video-id?token=guest-a',
-    )
-    expect(fetchMock).not.toHaveBeenCalled()
+    await waitFor(() => expect(video.getAttribute('src')).toBe(
+      'http://api.local/api/files/public/preview/video-id?ticket=file-ticket-video-id',
+    ))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(apiRequestMock).not.toHaveBeenCalled()
+    // The static "Open" href never carries a credential either.
+    expect(screen.getByRole('link', { name: 'Open' })).toHaveAttribute(
+      'href',
+      'http://api.local/api/files/public/preview/video-id',
+    )
   })
 
-  it('lets a click on "Open" navigate natively under the public policy instead of the popup-blocker-dependent tab dance', async () => {
-    // Regression test (F2): the public policy never sets isStreamingUrl
-    // (it has no getStreamingUrl), so openUrl is already the safe,
-    // already-tokened direct URL -- opening a blank tab and redirecting it
-    // via JS exists only to smuggle a fresh URL past a 403-prone static
-    // href while streaming, which doesn't apply here. Hijacking this click
-    // anyway would make "Open" popup-blocker-dependent for no reason.
-    vi.stubGlobal('fetch', vi.fn())
-    const openSpy = vi.spyOn(window, 'open')
+  it('opens public video through a header-authenticated blob while streaming', async () => {
+    // The static href has no credential, so a primary click with no in-app
+    // dialog resolves a blob over the guest header instead of navigating to
+    // a URL that would 403 for a guest-bound task.
+    vi.stubGlobal('fetch', publicFileFetch())
+    const fakeTab = { location: { href: '' }, closed: false, opener: 'set-by-code' as unknown }
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(fakeTab as unknown as Window)
 
     render(
       <FileAccessProvider policy={createPublicFileAccessPolicy('guest-a')}>
@@ -367,13 +393,13 @@ describe('InlineFilePreview', () => {
         />
       </FileAccessProvider>,
     )
-    await screen.findByLabelText('clip.mp4')
+    const video = await screen.findByLabelText('clip.mp4')
+    await waitFor(() => expect(video.getAttribute('src')).toContain('ticket='))
 
-    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true })
-    fireEvent(screen.getByRole('link', { name: 'Open' }), clickEvent)
+    fireEvent.click(screen.getByRole('link', { name: 'Open' }))
 
-    expect(openSpy).not.toHaveBeenCalled()
-    expect(clickEvent.defaultPrevented).toBe(false)
+    expect(openSpy).toHaveBeenCalledWith('about:blank', '_blank')
+    await waitFor(() => expect(fakeTab.location.href).toMatch(/^blob:/))
 
     openSpy.mockRestore()
   })

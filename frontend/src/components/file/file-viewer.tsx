@@ -227,14 +227,18 @@ export function FileViewer({
     }
   }, [base64Content, blobMimeType])
 
-  const processHtmlContent = React.useCallback((htmlContent: string, fileId: string) => {
+  const processHtmlContent = React.useCallback((
+    htmlContent: string,
+    fileId: string,
+    mapUrl: (url: string) => string = (url) => url,
+  ) => {
     const rewritten = htmlContent.replace(
       /(src|href)=["']([^"']+)["']/g,
       (match, attr, path) => {
         if (path.match(/^(https?:\/|data:|\/\/|#)/)) return match
         // Root-relative API URLs must remain on the app/API origin when the
         // HTML is delivered to a separate preview host (default API_URL="").
-        const absolute = (url: string) => new URL(url, window.location.origin).href
+        const absolute = (url: string) => mapUrl(new URL(url, window.location.origin).href)
         if (path.startsWith("file:")) {
           const fileRef = path.replace(/^file:/, "")
           return `${attr}="${absolute(fileAccess.inlinePreviewUrl(fileRef))}"`
@@ -254,11 +258,37 @@ export function FileViewer({
 
   React.useEffect(() => {
     // Keep the initial SSR/client render blank; prepare before assigning srcDoc.
-    if (isHtmlFile(fileName) && viewMode === "preview") {
-      setPreparedHtml({ content, fileId, fileName, policy: fileAccess,
-        html: content ? processHtmlContent(content, fileId) : "" })
+    if (!isHtmlFile(fileName) || viewMode !== "preview") return
+    const prepared = (html: string) => ({ content, fileId, fileName, policy: fileAccess, html })
+    const authorize = fileAccess.authorizeBrowserUrl
+    if (!content || !authorize) {
+      setPreparedHtml(prepared(content ? processHtmlContent(content, fileId) : ""))
+      return
     }
-  }, [content, fileId, fileName, viewMode, processHtmlContent])
+    // Subresources load without headers, so a policy that needs one signs
+    // each distinct asset URL with a short-lived file ticket first. An asset
+    // that cannot be signed keeps its plain URL and simply fails to load.
+    let active = true
+    const assetUrls = new Set<string>()
+    processHtmlContent(content, fileId, (url) => {
+      assetUrls.add(url)
+      return url
+    })
+    void Promise.all(Array.from(assetUrls, async (url) => {
+      try {
+        return [url, await authorize(url)] as const
+      } catch {
+        return [url, url] as const
+      }
+    })).then((entries) => {
+      if (!active) return
+      const signed = new Map<string, string>(entries)
+      setPreparedHtml(prepared(processHtmlContent(content, fileId, (url) => signed.get(url) ?? url)))
+    })
+    return () => {
+      active = false
+    }
+  }, [content, fileId, fileName, viewMode, processHtmlContent, fileAccess])
 
   if (isLoading) {
     return (

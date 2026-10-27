@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
@@ -833,16 +834,34 @@ def _resolve_public_preview_target(
     return candidate
 
 
+@dataclass(frozen=True)
+class PublicFileCredential:
+    """Guest credential presented to one public file request.
+
+    ``token`` is a guest token from the Authorization header; ``ticket_claims``
+    are the claims of a file ticket already verified against the route file.
+    """
+
+    token: str | None = None
+    ticket_claims: dict[str, Any] | None = None
+
+    def __repr__(self) -> str:  # never render either credential
+        return "PublicFileCredential(<redacted>)"
+
+
 def _validate_public_task_file_access(
     db: Session,
     file_record: UploadedFile,
-    token: str | None,
+    credential: PublicFileCredential,
 ) -> None:
     """Apply guest-token isolation without changing normal file capabilities.
 
     Ordinary signed-in tasks use the unguessable file ID as the capability for
     public preview and download URLs. Share and widget tasks additionally bind
-    file access to a signed guest token, which must resolve to the same task.
+    file access to a guest credential -- the guest token in the Authorization
+    header, or a file-bound ticket minted from it -- which must resolve to the
+    same task. Credentials are only interpreted for guest-bound files, so a
+    signed-in client's own Bearer header on this route is simply unused.
     """
     if (
         file_record.detached_reason is not None
@@ -859,27 +878,49 @@ def _validate_public_task_file_access(
     auth_mode = task.agent_config.get("auth_mode")
 
     if auth_mode == "share":
-        if not token:
-            raise HTTPException(
-                status_code=403, detail="Public file access token required"
-            )
-        from .public_chat_access import get_share_chat_user, get_task_for_share_context
+        from .public_chat_access import (
+            get_share_context_for_public_file,
+            get_task_for_share_context,
+        )
 
-        access_context = get_share_chat_user(token, db)
-        get_task_for_share_context(db, int(task.id), access_context)
+        share_context = get_share_context_for_public_file(credential, db)
+        get_task_for_share_context(db, int(task.id), share_context)
         return
 
     guest_id = task.agent_config.get("guest_id")
     if not isinstance(guest_id, str) or not guest_id:
         return
 
-    if not token:
-        raise HTTPException(status_code=403, detail="Public file access token required")
+    from .public_chat_access import (
+        get_task_for_public_context,
+        get_widget_context_for_public_file,
+    )
 
-    from .public_chat_access import get_public_chat_user, get_task_for_public_context
+    widget_context = get_widget_context_for_public_file(credential, db)
+    get_task_for_public_context(db, int(task.id), widget_context)
 
-    access_context = get_public_chat_user(token, db)
-    get_task_for_public_context(db, int(task.id), access_context)
+
+def _public_file_credential(
+    file_id: str,
+    ticket: Optional[str] = Query(default=None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+) -> PublicFileCredential:
+    """Collect the guest credential for a public file route.
+
+    The guest token is only read from the Authorization header; the retired
+    ``?token=`` query parameter is ignored. A present ``ticket`` is verified on
+    its own (signature, expiry, purpose, binding to this route's file id) and
+    never falls through to the header, mirroring the stream-ticket contract.
+    """
+    from .public_chat_access import verify_public_file_ticket
+
+    if ticket:
+        return PublicFileCredential(
+            ticket_claims=verify_public_file_ticket(ticket, file_id)
+        )
+    return PublicFileCredential(
+        token=credentials.credentials if credentials is not None else None
+    )
 
 
 def _find_registered_preview_asset(
@@ -2163,10 +2204,50 @@ async def preview_pptx_as_pdf(
     )
 
 
+@file_router.post("/public/tickets/{file_id:path}", response_model=None)
+async def issue_public_file_ticket(
+    file_id: str,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Exchange the header-carried guest token for a file-bound ticket.
+
+    For URLs the browser loads itself (media elements, HTML preview assets),
+    which cannot send an Authorization header. The ticket is short-lived,
+    bound to this one registered file (and relative assets under it), only
+    reads files, and is revalidated against the live share/widget deployment
+    on every use. The long-lived guest token never appears in a URL.
+    """
+    from .public_chat_access import create_public_file_ticket
+
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    file_record = (
+        db.query(UploadedFile).filter(UploadedFile.file_id == file_id).first()
+        if is_valid_uuid(file_id)
+        else None
+    )
+    if file_record is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    _validate_public_task_file_access(
+        db, file_record, PublicFileCredential(token=credentials.credentials)
+    )
+    ttl_seconds = get_file_stream_ticket_ttl_seconds()
+    ticket = create_public_file_ticket(
+        credentials.credentials, db, file_id=file_id, ttl_seconds=ttl_seconds
+    )
+    preview_path = f"{file_router.prefix}/public/preview/{quote(file_id, safe='')}"
+    return {
+        "ticket": ticket,
+        "path": f"{preview_path}?ticket={ticket}",
+        "expires_in": ttl_seconds,
+    }
+
+
 @file_router.get("/public/download/{file_id:path}", response_model=None)
 async def public_download_file(
     file_id: str,
-    token: Optional[str] = Query(default=None),
+    credential: PublicFileCredential = Depends(_public_file_credential),
     db: Session = Depends(get_db),
 ) -> Any:
     """Public source-download endpoint for the chat file-card 'Open' link.
@@ -2198,7 +2279,7 @@ async def public_download_file(
         )
 
     if file_record:
-        _validate_public_task_file_access(db, file_record, token)
+        _validate_public_task_file_access(db, file_record, credential)
         file_ref = ManagedFileRef(file_record)
         owner_user_id = _file_user_id_value(file_record)
         file_name = str(file_record.filename)
@@ -2250,7 +2331,7 @@ async def public_download_file(
 async def public_preview_file(
     file_id: str,
     relative_path: Optional[str] = Query(default=None),
-    token: Optional[str] = Query(default=None),
+    credential: PublicFileCredential = Depends(_public_file_credential),
     db: Session = Depends(get_db),
     validation_only: bool = False,
 ) -> Any:
@@ -2265,7 +2346,7 @@ async def public_preview_file(
         )
 
     if file_record:
-        _validate_public_task_file_access(db, file_record, token)
+        _validate_public_task_file_access(db, file_record, credential)
         file_ref = ManagedFileRef(file_record)
         base_path = file_ref.local_path
         owner_user_id = _file_user_id_value(file_record)
@@ -2320,7 +2401,7 @@ async def public_preview_file(
             relative_path=relative_path,
         )
         if asset_record is not None:
-            _validate_public_task_file_access(db, asset_record, token)
+            _validate_public_task_file_access(db, asset_record, credential)
             asset_ref = ManagedFileRef(asset_record)
             try:
                 target_path = await async_managed_copy(asset_ref, restore_local=True)
