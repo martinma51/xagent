@@ -63,7 +63,10 @@ restores the guest from the file's own task and revalidates against the live
 deployment on every use, so disabling or rotating the link revokes it. A ticket is not accepted as
 a Bearer guest token, and a guest token or private stream ticket is not
 accepted as `?ticket=`. Server access and handshake logs redact credential-like
-query values (`token`, `ticket`, `*_key`, ...).
+query values (`token`, `ticket`, `*_key`, ...), and the per-header lines the
+WebSocket stack logs at debug level (`--debug`) mask the
+`xagent-auth-token.` subprotocol item, `Authorization`/`Proxy-Authorization`
+credentials (the scheme is kept), cookies and `*-key`/`*-token` headers.
 
 ## Deployment
 

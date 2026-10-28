@@ -178,3 +178,129 @@ def test_exception_handlers_log_the_path_not_the_query(caplog):
     assert SECRET not in caplog.text
     assert "GET /v1/boom" in caplog.text
     assert "GET /api/typed" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "direction, name, value, expected",
+    [
+        (
+            "<",
+            "Sec-WebSocket-Protocol",
+            f"xagent-auth-v1, xagent-auth-token.{SECRET}",
+            f"xagent-auth-v1, xagent-auth-token.{REDACTED}",
+        ),
+        ("<", "Authorization", f"Bearer {SECRET}", f"Bearer {REDACTED}"),
+        ("<", "authorization", SECRET, REDACTED),
+        ("<", "Proxy-Authorization", f"Basic {SECRET}", f"Basic {REDACTED}"),
+        ("<", "Cookie", f"session={SECRET}", REDACTED),
+        ("<", "X-Api-Key", SECRET, REDACTED),
+        ("<", "X-Auth-Token", SECRET, REDACTED),
+        ("<", "Sec-WebSocket-Protocol", "xagent-auth-v1", "xagent-auth-v1"),
+        ("<", "Sec-WebSocket-Key", "dGhlIHNhbXBsZQ==", "dGhlIHNhbXBsZQ=="),
+        ("<", "Host", "localhost:8000", "localhost:8000"),
+        ("<", "Origin", "https://example.com", "https://example.com"),
+        (">", "Sec-WebSocket-Protocol", "xagent-auth-v1", "xagent-auth-v1"),
+        (">", "Set-Cookie", f"session={SECRET}", REDACTED),
+    ],
+)
+def test_handshake_header_records_are_redacted(direction, name, value, expected):
+    # websockets' legacy and Sans-I/O servers both log one debug record per
+    # handshake header to the logger uvicorn passes them (uvicorn.error):
+    # logger.debug("< %s: %s", name, value) for the request, "> %s: %s" for
+    # the response.
+    record = logging.LogRecord(
+        "uvicorn.error",
+        logging.DEBUG,
+        __file__,
+        1,
+        f"{direction} %s: %s",
+        (name, value),
+        None,
+    )
+    assert RequestTargetRedactionFilter().filter(record) is True
+    assert record.getMessage() == f"{direction} {name}: {expected}"
+
+
+def _capture_debug_handshake(ws_impl: str, **connect_kwargs: object) -> list[str]:
+    """Run one real WebSocket handshake through uvicorn at debug level."""
+    import asyncio
+    import threading
+    import time
+
+    import uvicorn
+    from websockets.sync.client import connect
+
+    async def app(scope, receive, send):  # type: ignore[no-untyped-def]
+        if scope["type"] != "websocket":
+            return
+        await receive()
+        offered = scope.get("subprotocols") or []
+        await send(
+            {
+                "type": "websocket.accept",
+                "subprotocol": "xagent-auth-v1" if offered else None,
+            }
+        )
+        await send({"type": "websocket.close", "code": 1000})
+
+    install_request_log_redaction()
+    records: list[logging.LogRecord] = []
+    capture = logging.Handler()
+    capture.emit = records.append  # type: ignore[method-assign]
+    server_logger = logging.getLogger("uvicorn.error")
+    server_logger.addHandler(capture)
+
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=0,
+        ws=ws_impl,
+        log_level="debug",
+        log_config=None,
+        lifespan="off",
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=lambda: asyncio.run(server.serve()), daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 10
+        while not server.started:
+            assert time.monotonic() < deadline, "server did not start"
+            time.sleep(0.02)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        with connect(f"ws://127.0.0.1:{port}/api/widget/chat/ws/1", **connect_kwargs):
+            pass
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        server_logger.removeHandler(capture)
+    return [record.getMessage() for record in records]
+
+
+@pytest.mark.usefixtures("restore_logging_state")
+@pytest.mark.parametrize("ws_impl", ["websockets", "websockets-sansio"])
+@pytest.mark.parametrize(
+    "connect_kwargs, carrier_line",
+    [
+        (
+            {"subprotocols": ["xagent-auth-v1", f"xagent-auth-token.{SECRET}"]},
+            f"< Sec-WebSocket-Protocol: xagent-auth-v1, xagent-auth-token.{REDACTED}",
+        ),
+        (
+            {"additional_headers": {"Authorization": f"Bearer {SECRET}"}},
+            f"< Authorization: Bearer {REDACTED}",
+        ),
+    ],
+)
+def test_debug_websocket_handshake_logs_no_header_credentials(
+    ws_impl, connect_kwargs, carrier_line
+):
+    messages = _capture_debug_handshake(ws_impl, **connect_kwargs)
+    assert messages, "the debug handshake logged nothing"
+    assert not [m for m in messages if SECRET in m]
+    # Header names are logged as the client spelled them.
+    lowered = [m.lower() for m in messages]
+    assert carrier_line.lower() in lowered
+    # Safe diagnostics remain.
+    assert any(m.startswith("< sec-websocket-key: ") for m in lowered)
+    assert "< get /api/widget/chat/ws/1 http/1.1" in lowered
