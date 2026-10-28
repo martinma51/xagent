@@ -235,20 +235,11 @@ export function createPublicFileAccessPolicy(accessToken: string): FileAccessPol
   // retries instead of re-throwing a cached rejection.
   const tickets = new Map<string, Promise<TicketEntry>>()
 
-  const fetchTicket = async (fileId: string): Promise<TicketEntry> => {
-    // A hung mint would otherwise stall every media/HTML-preview load for
-    // this file behind the cached pending promise.
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), STREAM_TICKET_MINT_TIMEOUT_MS)
-    let response: Response
-    try {
-      response = await request(
-        buildUrl(`${FILES_API_PREFIX}/public/tickets/${encodeFileId(fileId)}`),
-        { method: "POST", signal: controller.signal },
-      )
-    } finally {
-      clearTimeout(timeout)
-    }
+  const readTicket = async (fileId: string, signal: AbortSignal): Promise<TicketEntry> => {
+    const response = await request(
+      buildUrl(`${FILES_API_PREFIX}/public/tickets/${encodeFileId(fileId)}`),
+      { method: "POST", signal },
+    )
     if (!response.ok) {
       throw new Error(`Failed to mint file ticket: ${response.status}`)
     }
@@ -263,6 +254,27 @@ export function createPublicFileAccessPolicy(accessToken: string): FileAccessPol
     const lifetimeMs = expiresIn * 1000
     const marginMs = Math.min(TICKET_REFRESH_MARGIN_MS, lifetimeMs / 2)
     return { ticket, refreshAt: Date.now() + lifetimeMs - marginMs }
+  }
+
+  const fetchTicket = async (fileId: string): Promise<TicketEntry> => {
+    // A hung mint would otherwise stall every media/HTML-preview load for
+    // this file behind the cached pending promise. The deadline covers the
+    // whole mint -- headers, body and validation -- not just the request:
+    // aborting cancels a real fetch's body read too, and the race settles
+    // even when the body stream ignores the signal.
+    const controller = new AbortController()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error("File ticket mint timed out"))
+        controller.abort()
+      }, STREAM_TICKET_MINT_TIMEOUT_MS)
+    })
+    try {
+      return await Promise.race([readTicket(fileId, controller.signal), deadline])
+    } finally {
+      clearTimeout(timeout)
+    }
   }
 
   const mintTicket = async (fileId: string): Promise<string> => {

@@ -441,10 +441,46 @@ describe("FileAccessProvider", () => {
       const policy = createPublicFileAccessPolicy("guest-token")
 
       const hung = policy.getStreamingUrl?.("file-id")
-      const settled = expect(hung).rejects.toThrow("aborted")
+      const settled = expect(hung).rejects.toThrow("File ticket mint timed out")
       await vi.advanceTimersByTimeAsync(10_000)
       await settled
       await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=after-timeout")
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps the mint deadline through a response body that stalls after headers", async () => {
+    vi.useFakeTimers()
+    try {
+      let bodySignal: AbortSignal | undefined
+      const stalledBody = {
+        ok: true,
+        status: 200,
+        // Headers arrived; the body never finishes (and ignores the abort).
+        json: () => new Promise(() => {}),
+      } as unknown as Response
+      const fetchMock = vi.fn()
+        .mockImplementationOnce(async (_url: string, options: RequestInit) => {
+          bodySignal = options.signal ?? undefined
+          return stalledBody
+        })
+        .mockImplementationOnce(async () => ticketResponse("after-stall", 600))
+      vi.stubGlobal("fetch", fetchMock)
+      const policy = createPublicFileAccessPolicy("guest-token")
+
+      const stalled = policy.authorizeBrowserUrl?.(policy.inlinePreviewUrl("file-id"))
+      const settled = expect(stalled).rejects.toThrow("File ticket mint timed out")
+      await vi.advanceTimersByTimeAsync(9_999)
+      expect(bodySignal?.aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(1)
+      await settled
+      // The real fetch's body read is cancelled too.
+      expect(bodySignal?.aborted).toBe(true)
+      // Evicted: the next load mints afresh instead of waiting on the stall.
+      await expect(policy.authorizeBrowserUrl?.(policy.inlinePreviewUrl("file-id")))
+        .resolves.toContain("ticket=after-stall")
       expect(fetchMock).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
