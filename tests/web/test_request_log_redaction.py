@@ -1,12 +1,14 @@
 """Request URLs are logged without credential-bearing query values."""
 
 import logging
+from collections.abc import Iterator
 from logging.config import dictConfig
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from xagent.web import logging_config
 from xagent.web.app import global_exception_handler, validation_exception_handler
 from xagent.web.logging_config import setup_logging
 from xagent.web.request_log_redaction import (
@@ -17,6 +19,44 @@ from xagent.web.request_log_redaction import (
 )
 
 SECRET = "guest.jwt.SECRET-VALUE"
+
+
+@pytest.fixture
+def restore_logging_state() -> Iterator[None]:
+    """Snapshot every logger's level/handlers/filters and restore them after.
+
+    ``setup_logging(force=True)`` and ``dictConfig`` rewrite global logging
+    state (including resetting child loggers of configured names), which would
+    otherwise leak into later tests.
+    """
+    manager = logging.Logger.manager
+    loggers = [logging.getLogger()] + [
+        logger
+        for logger in list(manager.loggerDict.values())
+        if isinstance(logger, logging.Logger)
+    ]
+    snapshot = [
+        (
+            logger,
+            logger.level,
+            list(logger.handlers),
+            list(logger.filters),
+            logger.propagate,
+            logger.disabled,
+        )
+        for logger in loggers
+    ]
+    was_applied = logging_config._is_applied
+    try:
+        yield
+    finally:
+        for logger, level, handlers, filters, propagate, disabled in snapshot:
+            logger.setLevel(level)
+            logger.handlers[:] = handlers
+            logger.filters[:] = filters
+            logger.propagate = propagate
+            logger.disabled = disabled
+        logging_config._is_applied = was_applied
 
 
 @pytest.mark.parametrize(
@@ -45,6 +85,8 @@ SECRET = "guest.jwt.SECRET-VALUE"
         ),
         ("/a?token=", "/a?token="),
         ("/a?validation_only=true", "/a?validation_only=true"),
+        # Nothing sensitive: returned byte-for-byte, never re-serialized.
+        ("/search?q=a+b&flag&x=%5B1%5D", "/search?q=a+b&flag&x=%5B1%5D"),
     ],
 )
 def test_redact_request_target(target, expected):
@@ -67,6 +109,7 @@ def test_access_log_record_args_are_redacted():
     assert f"?token={REDACTED}" in record.getMessage()
 
 
+@pytest.mark.usefixtures("restore_logging_state")
 def test_server_loggers_keep_the_filter_across_logging_reconfiguration():
     setup_logging(force=True)
     # The ASGI server applies its own dictConfig after ours.
@@ -95,17 +138,12 @@ def test_server_loggers_keep_the_filter_across_logging_reconfiguration():
     capture.emit = records.append  # type: ignore[method-assign]
     server_logger = logging.getLogger("uvicorn.error")
     server_logger.addHandler(capture)
-    previous_level = server_logger.level
     server_logger.setLevel(logging.INFO)
-    try:
-        server_logger.info(
-            '%s - "WebSocket %s" [accepted]',
-            "127.0.0.1:1",
-            f"/api/widget/chat/ws/1?token={SECRET}",
-        )
-    finally:
-        server_logger.removeHandler(capture)
-        server_logger.setLevel(previous_level)
+    server_logger.info(
+        '%s - "WebSocket %s" [accepted]',
+        "127.0.0.1:1",
+        f"/api/widget/chat/ws/1?token={SECRET}",
+    )
     message = records[-1].getMessage()
     assert SECRET not in message
     assert f"/api/widget/chat/ws/1?token={REDACTED}" in message

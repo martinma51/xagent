@@ -66,7 +66,9 @@ def redact_request_target(target: str) -> str:
     """Return ``target`` with credential-like query values replaced.
 
     Accepts a request target (``/path?query``) or an absolute URL. Parameter
-    names and non-sensitive values are kept so logs stay useful.
+    names and non-sensitive values are kept so logs stay useful, and a target
+    with nothing to redact is returned unchanged (never re-serialized), so the
+    log still matches the request on the wire.
     """
     if "?" not in target:
         return target
@@ -78,9 +80,14 @@ def redact_request_target(target: str) -> str:
     if not parsed.query:
         return target
     parts = []
+    redacted = False
     for name, value in parse_qsl(parsed.query, keep_blank_values=True):
-        shown = REDACTED if value and is_sensitive_query_name(name) else value
-        parts.append(f"{quote(name, safe='')}={quote(shown, safe='[]')}")
+        if value and is_sensitive_query_name(name):
+            value = REDACTED
+            redacted = True
+        parts.append(f"{quote(name, safe='')}={quote(value, safe='[]')}")
+    if not redacted:
+        return target
     prefix = target.split("?", 1)[0]
     suffix = f"#{parsed.fragment}" if parsed.fragment else ""
     return f"{prefix}?{'&'.join(parts)}{suffix}"
@@ -90,6 +97,8 @@ class RequestTargetRedactionFilter(logging.Filter):
     """Redact credential query values in server access/handshake log args."""
 
     def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn's access and handshake lines always pass the request target
+        # as a positional ``%s`` argument, never pre-formatted into ``msg``.
         args = record.args
         if isinstance(args, tuple) and args:
             record.args = tuple(
@@ -97,11 +106,6 @@ class RequestTargetRedactionFilter(logging.Filter):
                 if isinstance(arg, str) and "?" in arg
                 else arg
                 for arg in args
-            )
-        elif not args and isinstance(record.msg, str) and "?" in record.msg:
-            record.msg = " ".join(
-                redact_request_target(word) if "?" in word else word
-                for word in record.msg.split(" ")
             )
         return True
 
