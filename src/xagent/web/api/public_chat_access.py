@@ -626,17 +626,49 @@ def get_share_chat_user(
 # exchanges its header credential for a short-lived ticket bound to one file.
 # The ticket is not a guest login: it reads that one file (and the relative
 # assets under it) and nothing else. Because the ticket JWT is only signed,
-# never encrypted, the deployment secret the guest token carries (share token
-# or widget key) is replaced by its digest; redemption restores it from the
-# live deployment, so rotating or disabling the link still revokes tickets.
+# never encrypted, it carries nothing that can be replayed elsewhere:
+#
+# * the guest id is replaced by a keyed, non-reversible binding. A widget guest
+#   id is client-chosen and ``/api/widget/auth`` signs whatever id it is given
+#   with the public widget key, so a readable id would let a ticket holder
+#   mint a fresh 30-day guest token for that identity. Redemption recomputes
+#   the binding from the file's own task and restores the id from there;
+# * the deployment secret (share token or widget key) is replaced by its
+#   digest; redemption restores it from the live deployment, so rotating or
+#   disabling the link still revokes tickets;
+# * only the routing claims the guest resolver needs are kept (an allowlist),
+#   plus a per-ticket nonce.
 PUBLIC_FILE_TICKET_TYPE = "public_file_ticket"
 _DEPLOYMENT_SECRET_DIGEST_CLAIM = "deployment_secret_sha256"
+_GUEST_BINDING_CLAIM = "guest_binding"
+_GUEST_BINDING_DOMAIN = b"xagent:public-file-ticket:guest-binding:v1\0"
 _GUEST_SECRET_CLAIMS = ("share_token", "widget_key")
-_GUEST_TIME_CLAIMS = ("exp", "iat", "nbf")
+_TICKET_GUEST_CLAIMS = (
+    "type",
+    "auth_mode",
+    "user_id",
+    "channel_id",
+    "widget_agent_id",
+    "widget_workforce_id",
+    "share_agent_id",
+    "share_workforce_id",
+)
 
 
 def _deployment_secret_digest(secret: str) -> str:
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def _guest_binding(guest_id: str) -> str:
+    """Keyed, non-reversible binding of a guest id for a public file ticket.
+
+    Keyed with the server's JWT secret (domain-separated), so a self-chosen,
+    low-entropy widget guest id cannot be recovered by guessing offline.
+    """
+    key = hmac.digest(
+        JWT_SECRET_KEY.encode("utf-8"), _GUEST_BINDING_DOMAIN, "sha256"
+    )
+    return hmac.new(key, guest_id.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _guest_secret_claim(guest: dict[str, Any]) -> str:
@@ -665,13 +697,16 @@ def create_public_file_ticket(
     """Sign a ticket bound to ``file_id`` for already-validated guest claims.
 
     The caller has already authorized the guest for that file (and so resolved
-    the claims against the live deployment); this only re-packages them.
+    the claims against the live deployment). The ticket keeps only the routing
+    claims, a digest of the deployment secret and a keyed binding of the guest
+    id -- never the guest id itself (see the module notes above).
     """
     guest = {
-        key: value
-        for key, value in guest_claims.items()
-        if key not in _GUEST_SECRET_CLAIMS and key not in _GUEST_TIME_CLAIMS
+        key: guest_claims[key] for key in _TICKET_GUEST_CLAIMS if key in guest_claims
     }
+    guest_id = guest_claims.get("guest_id")
+    if isinstance(guest_id, str) and guest_id:
+        guest[_GUEST_BINDING_CLAIM] = _guest_binding(guest_id)
     secret = guest_claims.get(_guest_secret_claim(guest_claims))
     if isinstance(secret, str) and secret:
         guest[_DEPLOYMENT_SECRET_DIGEST_CLAIM] = _deployment_secret_digest(secret)
@@ -679,6 +714,7 @@ def create_public_file_ticket(
         "type": PUBLIC_FILE_TICKET_TYPE,
         "file_id": file_id,
         "guest": guest,
+        "jti": secrets.token_urlsafe(16),
         "exp": datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
     }
     encoded: str = jwt.encode(claims, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
@@ -719,14 +755,27 @@ def _current_deployment_secret(db: Session, guest: dict[str, Any]) -> str | None
 
 
 def _guest_claims_from_ticket(
-    ticket_claims: dict[str, Any], db: Session
+    ticket_claims: dict[str, Any], db: Session, task_guest_id: object
 ) -> dict[str, Any]:
-    """Restore the guest claims a verified ticket carries.
+    """Restore the guest claims a verified ticket stands for.
 
-    A rotated or removed deployment secret no longer matches the digest, which
-    revokes the ticket exactly as it revokes the guest token it came from.
+    ``task_guest_id`` is the guest the requested file's task belongs to. The
+    ticket only carries a keyed binding of its guest, so it is honoured only
+    when that binding matches this task's guest; the id is then restored from
+    the task (the ticket never reveals it). A rotated or removed deployment
+    secret no longer matches the digest, which revokes the ticket exactly as
+    it revokes the guest token it came from.
     """
     guest = dict(ticket_claims["guest"])
+    binding = guest.pop(_GUEST_BINDING_CLAIM, None)
+    if (
+        not isinstance(binding, str)
+        or not isinstance(task_guest_id, str)
+        or not task_guest_id
+        or not hmac.compare_digest(binding, _guest_binding(task_guest_id))
+    ):
+        raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+    guest["guest_id"] = task_guest_id
     digest = guest.pop(_DEPLOYMENT_SECRET_DIGEST_CLAIM, None)
     if digest is None:
         return guest
@@ -755,16 +804,21 @@ def resolve_public_file_guest(
     credential: PublicFileCredential,
     db: Session,
     resolver: Callable[..., _ChatAccessContextT],
+    *,
+    task_guest_id: object,
 ) -> tuple[_ChatAccessContextT, dict[str, Any]]:
     """Resolve a public file request's guest through ``resolver``.
 
     ``resolver`` is :func:`get_share_chat_user` or :func:`get_public_chat_user`,
-    chosen by the caller from the file's task. Returns the access context and
-    the guest claims it validated, so a ticket can be minted from exactly the
+    chosen by the caller from the file's task; ``task_guest_id`` is that task's
+    guest, which a ticket must be bound to. Returns the access context and the
+    guest claims it validated, so a ticket can be minted from exactly the
     claims that were checked (no second decode or dispatch).
     """
     if credential.ticket_claims is not None:
-        claims = _guest_claims_from_ticket(credential.ticket_claims, db)
+        claims = _guest_claims_from_ticket(
+            credential.ticket_claims, db, task_guest_id
+        )
     elif credential.token:
         claims = decode_public_guest_token(credential.token)
     else:

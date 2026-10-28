@@ -3276,6 +3276,123 @@ def test_widget_public_file_ticket_dies_with_widget_key_rotation() -> None:
     assert revoked.json()["detail"] == "Widget is unavailable"
 
 
+def _unverified_jwt_payload(token: str) -> dict[str, Any]:
+    """Read a JWT payload the way any ticket holder can: base64, no key."""
+    segment = token.split(".")[1]
+    raw = base64.urlsafe_b64decode(segment + "=" * (-len(segment) % 4))
+    return cast(dict[str, Any], json.loads(raw))
+
+
+def _string_values(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for item in value.values() for s in _string_values(item)]
+    if isinstance(value, list):
+        return [s for item in value for s in _string_values(item)]
+    return []
+
+
+def test_widget_file_ticket_reveals_no_guest_identity_for_widget_auth() -> None:
+    """A widget file ticket travels in a URL and is only signed, so anything in
+    it is readable. ``/api/widget/auth`` signs any caller-supplied guest id
+    with the public widget key, so a readable guest id would let a ticket
+    holder mint a fresh 30-day token for that guest. The ticket must carry only
+    a keyed binding of the guest id, and nothing in it may obtain the guest."""
+    _admin_headers()  # ensures the admin owner exists
+    owner_id = _user_id("admin")
+    agent_id = _create_agent_row(
+        user_id=owner_id,
+        name="Ticket Identity Widget Agent",
+        status=AgentStatus.PUBLISHED,
+        widget_enabled=True,
+    )
+    widget_key = _widget_key_for(agent_id)
+    victim_guest_id = f"victim-{secrets.token_hex(6)}"
+    guest_headers = _authenticate_widget_guest(
+        agent_id=agent_id, guest_id=victim_guest_id
+    )
+    created = _create_widget_task(guest_headers, agent_id)
+    assert created.status_code == 200, created.text
+    uploaded = client.post(
+        "/api/widget/files/upload",
+        headers=guest_headers,
+        data={"task_type": "task", "task_id": str(created.json()["task_id"])},
+        files={"file": ("identity.txt", io.BytesIO(b"victim"), "text/plain")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    file_id = uploaded.json()["file_id"]
+    minted = _mint_public_file_ticket(file_id, guest_headers)
+    assert minted.status_code == 200, minted.text
+    ticket = minted.json()["ticket"]
+
+    payload = _unverified_jwt_payload(ticket)
+    assert "guest_id" not in payload
+    assert "guest_id" not in payload["guest"]
+    assert "sub" not in payload["guest"]
+    assert victim_guest_id not in json.dumps(payload)
+    assert victim_guest_id not in ticket
+    assert widget_key not in json.dumps(payload)
+    assert set(payload["guest"]) <= {
+        "type",
+        "auth_mode",
+        "user_id",
+        "channel_id",
+        "widget_agent_id",
+        "deployment_secret_sha256",
+        "guest_binding",
+    }
+
+    preview_url = f"/api/files/public/preview/{file_id}"
+
+    def file_opens_for(guest_id: str) -> bool:
+        # The supported direct-visit path with the public widget key.
+        auth = client.post(
+            "/api/widget/auth",
+            json={"widget_key": widget_key, "guest_id": guest_id},
+        )
+        if auth.status_code == 422:  # too long to be any guest id
+            return False
+        assert auth.status_code == 200, auth.text
+        token = auth.json()["access_token"]
+        response = client.get(
+            preview_url, headers={"Authorization": f"Bearer {token}"}
+        )
+        return response.status_code == 200
+
+    # Control: the attack works if the real guest id is known.
+    assert file_opens_for(victim_guest_id)
+    # No value a ticket holder can read becomes that guest.
+    candidates = set(_string_values(payload)) | {ticket}
+    for candidate in candidates:
+        assert not file_opens_for(candidate), candidate
+
+    # The ticket itself still redeems for its file.
+    redeemed = client.get(preview_url, params={"ticket": ticket})
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.content == b"victim"
+
+
+def test_public_file_ticket_redeems_only_for_its_guests_task() -> None:
+    """Redemption restores the guest from the file's own task, so a ticket
+    whose binding names another guest is refused even for a file id it is
+    signed for."""
+    *_, access_token, file_id = _share_ticket_fixture("Ticket Binding Agent")
+    guest = jwt.decode(access_token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    good = create_public_file_ticket(guest, file_id=file_id, ttl_seconds=60)
+    url = f"/api/files/public/preview/{file_id}"
+    assert client.get(url, params={"ticket": good}).status_code == 200
+
+    forged_guest = {**guest, "guest_id": "someone-else"}
+    other = create_public_file_ticket(forged_guest, file_id=file_id, ttl_seconds=60)
+    refused = client.get(url, params={"ticket": other})
+    assert refused.status_code == 401, refused.text
+    unbound_guest = {k: v for k, v in guest.items() if k != "guest_id"}
+    unbound = create_public_file_ticket(unbound_guest, file_id=file_id, ttl_seconds=60)
+    refused = client.get(url, params={"ticket": unbound})
+    assert refused.status_code == 401, refused.text
+
+
 def _share_ticket_fixture(
     name: str,
 ) -> tuple[int, int, str, dict[str, str], str, str]:

@@ -885,19 +885,19 @@ def _validate_public_task_file_access(
         resolve_public_file_guest,
     )
 
+    guest_id = task.agent_config.get("guest_id")
     if task.agent_config.get("auth_mode") == "share":
         share_context, claims = resolve_public_file_guest(
-            credential, db, get_share_chat_user
+            credential, db, get_share_chat_user, task_guest_id=guest_id
         )
         get_task_for_share_context(db, int(task.id), share_context)
         return claims
 
-    guest_id = task.agent_config.get("guest_id")
     if not isinstance(guest_id, str) or not guest_id:
         return None
 
     widget_context, claims = resolve_public_file_guest(
-        credential, db, get_public_chat_user
+        credential, db, get_public_chat_user, task_guest_id=guest_id
     )
     get_task_for_public_context(db, int(task.id), widget_context)
     return claims

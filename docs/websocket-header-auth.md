@@ -55,9 +55,12 @@ assets) cannot send that header, so the frontend exchanges it for a
 short-lived ticket bound to one file: `POST /api/files/public/tickets/{file_id}`
 returns `{ticket, expires_in}`, used as `?ticket=` on those two routes
 (including `relative_path` assets under that file). The ticket lives
-`XAGENT_FILE_STREAM_TICKET_TTL_SECONDS`, carries only a digest of the share
-token / widget key, and is revalidated against the live deployment on every
-use, so disabling or rotating the link revokes it. A ticket is not accepted as
+`XAGENT_FILE_STREAM_TICKET_TTL_SECONDS` and is signed but readable, so it
+carries no reusable identity: only a digest of the share token / widget key
+and a keyed, non-reversible binding of the guest id (never the id itself,
+which `/api/widget/auth` would re-sign into a fresh guest token). Redemption
+restores the guest from the file's own task and revalidates against the live
+deployment on every use, so disabling or rotating the link revokes it. A ticket is not accepted as
 a Bearer guest token, and a guest token or private stream ticket is not
 accepted as `?ticket=`. Server access and handshake logs redact credential-like
 query values (`token`, `ticket`, `*_key`, ...).
