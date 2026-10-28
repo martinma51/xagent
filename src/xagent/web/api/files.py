@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
@@ -842,18 +842,16 @@ class PublicFileCredential:
     are the claims of a file ticket already verified against the route file.
     """
 
-    token: str | None = None
-    ticket_claims: dict[str, Any] | None = None
-
-    def __repr__(self) -> str:  # never render either credential
-        return "PublicFileCredential(<redacted>)"
+    # repr=False on both: neither credential may be rendered in logs/tracebacks.
+    token: str | None = field(default=None, repr=False)
+    ticket_claims: dict[str, Any] | None = field(default=None, repr=False)
 
 
 def _validate_public_task_file_access(
     db: Session,
     file_record: UploadedFile,
     credential: PublicFileCredential,
-) -> None:
+) -> dict[str, Any] | None:
     """Apply guest-token isolation without changing normal file capabilities.
 
     Ordinary signed-in tasks use the unguessable file ID as the capability for
@@ -862,6 +860,10 @@ def _validate_public_task_file_access(
     header, or a file-bound ticket minted from it -- which must resolve to the
     same task. Credentials are only interpreted for guest-bound files, so a
     signed-in client's own Bearer header on this route is simply unused.
+
+    Returns the guest claims that were validated for a guest-bound file (so a
+    ticket can be minted from them), or ``None`` when the file is not
+    guest-bound and no credential was consulted.
     """
     if (
         file_record.detached_reason is not None
@@ -869,35 +871,36 @@ def _validate_public_task_file_access(
     ):
         raise HTTPException(status_code=403, detail="Access denied")
     if not file_record.task_id:
-        return
+        return None
 
     task = db.query(Task).filter(Task.id == file_record.task_id).first()
     if not task or not isinstance(task.agent_config, dict):
-        return
+        return None
 
-    auth_mode = task.agent_config.get("auth_mode")
+    from .public_chat_access import (
+        get_public_chat_user,
+        get_share_chat_user,
+        get_task_for_public_context,
+        get_task_for_share_context,
+        resolve_public_file_guest,
+    )
 
-    if auth_mode == "share":
-        from .public_chat_access import (
-            get_share_context_for_public_file,
-            get_task_for_share_context,
+    if task.agent_config.get("auth_mode") == "share":
+        share_context, claims = resolve_public_file_guest(
+            credential, db, get_share_chat_user
         )
-
-        share_context = get_share_context_for_public_file(credential, db)
         get_task_for_share_context(db, int(task.id), share_context)
-        return
+        return claims
 
     guest_id = task.agent_config.get("guest_id")
     if not isinstance(guest_id, str) or not guest_id:
-        return
+        return None
 
-    from .public_chat_access import (
-        get_task_for_public_context,
-        get_widget_context_for_public_file,
+    widget_context, claims = resolve_public_file_guest(
+        credential, db, get_public_chat_user
     )
-
-    widget_context = get_widget_context_for_public_file(credential, db)
     get_task_for_public_context(db, int(task.id), widget_context)
+    return claims
 
 
 def _public_file_credential(
@@ -2216,9 +2219,13 @@ async def issue_public_file_ticket(
     which cannot send an Authorization header. The ticket is short-lived,
     bound to this one registered file (and relative assets under it), only
     reads files, and is revalidated against the live share/widget deployment
-    on every use. The long-lived guest token never appears in a URL.
+    on every use. The long-lived guest token never appears in a URL. Its
+    lifetime is ``XAGENT_FILE_STREAM_TICKET_TTL_SECONDS``.
     """
-    from .public_chat_access import create_public_file_ticket
+    from .public_chat_access import (
+        create_public_file_ticket,
+        decode_public_guest_token,
+    )
 
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -2229,19 +2236,18 @@ async def issue_public_file_ticket(
     )
     if file_record is None:
         raise HTTPException(status_code=404, detail="File not found")
-    _validate_public_task_file_access(
+    guest_claims = _validate_public_task_file_access(
         db, file_record, PublicFileCredential(token=credentials.credentials)
     )
+    if guest_claims is None:
+        # Not a guest-bound file: the file id alone already opens it, but the
+        # mint still requires a genuine guest token rather than none at all.
+        guest_claims = decode_public_guest_token(credentials.credentials)
     ttl_seconds = get_file_stream_ticket_ttl_seconds()
     ticket = create_public_file_ticket(
-        credentials.credentials, db, file_id=file_id, ttl_seconds=ttl_seconds
+        guest_claims, file_id=file_id, ttl_seconds=ttl_seconds
     )
-    preview_path = f"{file_router.prefix}/public/preview/{quote(file_id, safe='')}"
-    return {
-        "ticket": ticket,
-        "path": f"{preview_path}?ticket={ticket}",
-        "expires_in": ttl_seconds,
-    }
+    return {"ticket": ticket, "expires_in": ttl_seconds}
 
 
 @file_router.get("/public/download/{file_id:path}", response_model=None)
@@ -2263,10 +2269,16 @@ async def public_download_file(
     ``/api/files/download/{file_id}`` route would 401 every plain
     browser navigation.
 
-    The ``file_id`` is the only required capability, matching the
-    existing ``public/preview`` contract. ``relative_path`` is
-    intentionally NOT supported: 'Open' always targets the registered
-    source artifact, never a sub-path inside it.
+    For ordinary files the ``file_id`` is the only required capability,
+    matching the ``public/preview`` contract. Files of share/widget guest
+    tasks additionally need a guest credential: the guest token in the
+    ``Authorization`` header, or -- for plain browser navigations, which
+    cannot send that header -- a short-lived ``?ticket=`` minted by
+    ``POST /public/tickets/{file_id}``. The public frontend adds that ticket
+    to the 'Open' href at click time. The retired ``?token=`` query
+    parameter is ignored. ``relative_path`` is intentionally NOT
+    supported: 'Open' always targets the registered source artifact, never
+    a sub-path inside it.
     """
     file_record: Optional[UploadedFile] = None
     target_path: Optional[Path] = None

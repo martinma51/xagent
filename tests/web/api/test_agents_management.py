@@ -20,7 +20,10 @@ from xagent.core.execution_scope import (
 )
 from xagent.web import jwt_codec as jwt
 from xagent.web.api import agents as agents_api
-from xagent.web.api.public_chat_access import create_public_chat_access_token
+from xagent.web.api.public_chat_access import (
+    create_public_chat_access_token,
+    create_public_file_ticket,
+)
 from xagent.web.api.widget import (
     EMBED_TICKET_TYPE,
     WIDGET_CREDENTIAL_REQUIRED_DETAIL,
@@ -3187,17 +3190,19 @@ def test_share_public_file_ticket_is_file_bound_and_revocable() -> None:
     minted = _mint_public_file_ticket(file_id, guest_headers)
     assert minted.status_code == 200, minted.text
     body = minted.json()
+    # Only the ticket and its lifetime; the client builds its own URL.
+    assert set(body) == {"ticket", "expires_in"}
     ticket = body["ticket"]
-    assert body["path"] == f"/api/files/public/preview/{file_id}?ticket={ticket}"
     assert 0 < body["expires_in"] <= 3600
-    assert access_token not in body["path"]
+    assert access_token not in ticket
+    preview_url = f"/api/files/public/preview/{file_id}?ticket={ticket}"
     # Signed, not encrypted: the share secret itself must not ride in the URL.
     claims = jwt.decode(ticket, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
     assert share_token not in json.dumps(claims)
     assert claims["type"] == "public_file_ticket"
     assert claims["file_id"] == file_id
 
-    preview = client.get(body["path"])
+    preview = client.get(preview_url)
     assert preview.status_code == 200, preview.text
     assert preview.content == b"hello from public task"
     download = client.get(
@@ -3220,7 +3225,7 @@ def test_share_public_file_ticket_is_file_bound_and_revocable() -> None:
 
     disabled = client.delete(f"/api/agents/{agent_id}/share-link", headers=headers)
     assert disabled.status_code == 200, disabled.text
-    revoked = client.get(body["path"])
+    revoked = client.get(preview_url)
     assert revoked.status_code == 403, revoked.text
     assert revoked.json()["detail"] == "Share link is unavailable"
 
@@ -3255,13 +3260,222 @@ def test_widget_public_file_ticket_dies_with_widget_key_rotation() -> None:
     claims = jwt.decode(ticket, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
     assert widget_key not in json.dumps(claims)
 
-    assert client.get(minted.json()["path"]).status_code == 200
+    assert (
+        client.get(
+            f"/api/files/public/preview/{file_id}", params={"ticket": ticket}
+        ).status_code
+        == 200
+    )
 
     rotated = client.post(f"/api/agents/{agent_id}/widget-key/rotate", headers=headers)
     assert rotated.status_code == 200, rotated.text
     revoked = client.get(
         f"/api/files/public/preview/{file_id}", params={"ticket": ticket}
     )
+    assert revoked.status_code == 403, revoked.text
+    assert revoked.json()["detail"] == "Widget is unavailable"
+
+
+def _share_ticket_fixture(
+    name: str,
+) -> tuple[int, int, str, dict[str, str], str, str]:
+    """A published share agent, one guest, and one file on that guest's task.
+
+    Returns ``(owner_id, agent_id, share_token, guest_headers, access_token,
+    file_id)``.
+    """
+    _admin_headers()  # ensures the admin owner exists
+    owner_id = _user_id("admin")
+    share_token = f"share-{secrets.token_urlsafe(12)}"
+    agent_id = _create_agent_row(
+        user_id=owner_id,
+        name=name,
+        status=AgentStatus.PUBLISHED,
+        share_enabled=True,
+        share_token=share_token,
+    )
+    guest_headers = _authenticate_share_guest(share_token)
+    access_token = guest_headers["Authorization"].replace("Bearer ", "", 1)
+    file_id = _create_public_task_file(
+        owner_id=owner_id,
+        agent_id=agent_id,
+        guest_id=_share_guest_id(access_token),
+        filename=f"{secrets.token_hex(4)}-note.txt",
+    )
+    return owner_id, agent_id, share_token, guest_headers, access_token, file_id
+
+
+def test_public_file_ticket_expiry_matches_expires_in() -> None:
+    _, _, _, guest_headers, _, file_id = _share_ticket_fixture("Ticket Exp Agent")
+    before = datetime.now(timezone.utc).timestamp()
+    minted = _mint_public_file_ticket(file_id, guest_headers)
+    assert minted.status_code == 200, minted.text
+    body = minted.json()
+    claims = jwt.decode(body["ticket"], JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    # exp tracks expires_in, so the client's refresh margin is meaningful.
+    assert abs(claims["exp"] - (before + body["expires_in"])) <= 5
+
+    guest = jwt.decode(
+        guest_headers["Authorization"].replace("Bearer ", "", 1),
+        JWT_SECRET_KEY,
+        algorithms=[JWT_ALGORITHM],
+    )
+    expired = create_public_file_ticket(guest, file_id=file_id, ttl_seconds=-1)
+    response = client.get(
+        f"/api/files/public/preview/{file_id}", params={"ticket": expired}
+    )
+    assert response.status_code == 401, response.text
+
+
+def test_public_file_ticket_mint_denied_for_another_guests_file() -> None:
+    _, _, share_token, _, _, file_id = _share_ticket_fixture("Ticket Cross Agent")
+    # Same share link, a different guest: isolated from the first guest's task.
+    intruder = _authenticate_share_guest(share_token)
+    denied = _mint_public_file_ticket(file_id, intruder)
+    assert denied.status_code == 403, denied.text
+    assert "ticket" not in denied.json()
+
+
+def test_public_file_ticket_audiences_do_not_mix() -> None:
+    """A widget guest's ticket never opens a share task's file (and vice versa),
+    even when signed by this server and bound to the right file id."""
+    owner_id, _, _, share_headers, share_access, share_file = _share_ticket_fixture(
+        "Ticket Audience Share Agent"
+    )
+    widget_agent_id = _create_agent_row(
+        user_id=owner_id,
+        name="Ticket Audience Widget Agent",
+        status=AgentStatus.PUBLISHED,
+        widget_enabled=True,
+    )
+    widget_headers = _authenticate_widget_guest(agent_id=widget_agent_id)
+    created = _create_widget_task(widget_headers, widget_agent_id)
+    assert created.status_code == 200, created.text
+    uploaded = client.post(
+        "/api/widget/files/upload",
+        headers=widget_headers,
+        data={"task_type": "task", "task_id": str(created.json()["task_id"])},
+        files={"file": ("audience.txt", io.BytesIO(b"widget"), "text/plain")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    widget_file = uploaded.json()["file_id"]
+
+    # Minting across audiences is refused outright.
+    assert _mint_public_file_ticket(share_file, widget_headers).status_code == 401
+    assert _mint_public_file_ticket(widget_file, share_headers).status_code == 401
+
+    def claims_of(headers: dict[str, str]) -> dict[str, Any]:
+        token = headers["Authorization"].replace("Bearer ", "", 1)
+        return cast(
+            dict[str, Any],
+            jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM]),
+        )
+
+    # A server-signed ticket carrying the other audience's guest is refused too.
+    widget_ticket = create_public_file_ticket(
+        claims_of(widget_headers), file_id=share_file, ttl_seconds=60
+    )
+    share_ticket = create_public_file_ticket(
+        claims_of(share_headers), file_id=widget_file, ttl_seconds=60
+    )
+    assert share_access not in share_ticket
+    for file_id, ticket in ((share_file, widget_ticket), (widget_file, share_ticket)):
+        response = client.get(
+            f"/api/files/public/preview/{file_id}", params={"ticket": ticket}
+        )
+        assert response.status_code == 401, response.text
+
+
+def test_public_file_routes_reject_credentials_in_the_wrong_carrier() -> None:
+    _, _, _, guest_headers, access_token, file_id = _share_ticket_fixture(
+        "Ticket Carrier Agent"
+    )
+    ticket = _mint_public_file_ticket(file_id, guest_headers).json()["ticket"]
+    preview_url = f"/api/files/public/preview/{file_id}"
+
+    # A file ticket is not a guest login.
+    as_bearer = client.get(preview_url, headers={"Authorization": f"Bearer {ticket}"})
+    assert as_bearer.status_code == 401, as_bearer.text
+    as_mint_bearer = _mint_public_file_ticket(
+        file_id, {"Authorization": f"Bearer {ticket}"}
+    )
+    assert as_mint_bearer.status_code == 401, as_mint_bearer.text
+    # The long-lived guest token is not a ticket.
+    as_ticket = client.get(preview_url, params={"ticket": access_token})
+    assert as_ticket.status_code == 401, as_ticket.text
+    # A signed-in user's private stream ticket does not open public routes.
+    stream = client.get(
+        f"/api/files/stream-tickets/{file_id}", headers=_admin_headers()
+    )
+    assert stream.status_code == 200, stream.text
+    stream_ticket = stream.json()["path"].split("ticket=", 1)[1]
+    for route in ("preview", "download"):
+        response = client.get(
+            f"/api/files/public/{route}/{file_id}", params={"ticket": stream_ticket}
+        )
+        assert response.status_code == 401, response.text
+
+
+def test_public_file_ticket_redeems_relative_preview_assets() -> None:
+    owner_id, agent_id, _, guest_headers, access_token, page_id = _share_ticket_fixture(
+        "Ticket Asset Agent"
+    )
+    page_id = _create_public_task_file(
+        owner_id=owner_id,
+        agent_id=agent_id,
+        guest_id=_share_guest_id(access_token),
+        filename="ticket-page.html",
+        content=b"<img src='ticket-asset.png'>",
+    )
+    (get_uploads_dir() / f"user_{owner_id}" / "ticket-asset.png").write_bytes(
+        b"asset-bytes"
+    )
+    ticket = _mint_public_file_ticket(page_id, guest_headers).json()["ticket"]
+    url = f"/api/files/public/preview/{page_id}"
+
+    asset = client.get(
+        url, params={"relative_path": "ticket-asset.png", "ticket": ticket}
+    )
+    assert asset.status_code == 200, asset.text
+    assert asset.content == b"asset-bytes"
+    anonymous = client.get(url, params={"relative_path": "ticket-asset.png"})
+    assert anonymous.status_code == 403, anonymous.text
+
+
+def test_public_file_ticket_without_secret_digest_stays_gated_on_live_widget() -> None:
+    """Legacy guest tokens carry no widget key, so their tickets carry no digest;
+    redemption still re-derives access from the live widget state."""
+    headers = _admin_headers()
+    owner_id = _user_id("admin")
+    agent_id = _create_agent_row(
+        user_id=owner_id,
+        name="Ticket Legacy Widget Agent",
+        status=AgentStatus.PUBLISHED,
+        widget_enabled=True,
+    )
+    guest_headers = _mint_legacy_widget_guest_token(user_id=owner_id, agent_id=agent_id)
+    created = _create_widget_task(guest_headers, agent_id)
+    assert created.status_code == 200, created.text
+    uploaded = client.post(
+        "/api/widget/files/upload",
+        headers=guest_headers,
+        data={"task_type": "task", "task_id": str(created.json()["task_id"])},
+        files={"file": ("legacy.txt", io.BytesIO(b"legacy"), "text/plain")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    file_id = uploaded.json()["file_id"]
+
+    ticket = _mint_public_file_ticket(file_id, guest_headers).json()["ticket"]
+    claims = jwt.decode(ticket, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+    assert "deployment_secret_sha256" not in claims["guest"]
+    url = f"/api/files/public/preview/{file_id}"
+    assert client.get(url, params={"ticket": ticket}).status_code == 200
+
+    disabled = client.put(
+        f"/api/agents/{agent_id}", headers=headers, json={"widget_enabled": False}
+    )
+    assert disabled.status_code == 200, disabled.text
+    revoked = client.get(url, params={"ticket": ticket})
     assert revoked.status_code == 403, revoked.text
     assert revoked.json()["detail"] == "Widget is unavailable"
 

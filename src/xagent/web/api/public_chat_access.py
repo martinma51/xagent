@@ -249,6 +249,25 @@ def _require_bindable_public_id(value: object, dialect_name: str) -> int:
     return value
 
 
+def _select_public_entity(
+    payload: dict[str, Any], prefix: str
+) -> tuple[int | None, int | None]:
+    """Pick the deployment a guest claim set targets: ``(agent_id, workforce_id)``.
+
+    ``prefix`` is ``"widget"`` or ``"share"``. A workforce id wins over an
+    agent id; exactly one of the pair is returned. This single precedence rule
+    is shared by the guest validators and the file-ticket secret lookup so the
+    two cannot drift.
+    """
+    workforce_id = payload.get(f"{prefix}_workforce_id")
+    if _is_strict_int(workforce_id):
+        return None, workforce_id
+    agent_id = payload.get(f"{prefix}_agent_id")
+    if _is_strict_int(agent_id):
+        return agent_id, None
+    raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_ENTITY)
+
+
 def create_public_chat_access_token(data: dict[str, Any]) -> str:
     """Create JWT access token for widget/share guests."""
     to_encode = data.copy()
@@ -397,7 +416,8 @@ def get_public_chat_user(
     """Get public chat access context from a widget/share token.
 
     ``verified_claims`` replaces decoding ``token`` when the caller already
-    verified the guest claims itself (a redeemed public file ticket).
+    verified the guest claims itself (a decoded guest token or a redeemed
+    public file ticket, see :func:`resolve_public_file_guest`).
     """
     try:
         payload = (
@@ -412,8 +432,6 @@ def get_public_chat_user(
         channel_id = payload.get("channel_id")
         guest_id = payload.get("guest_id")
         auth_mode = payload.get("auth_mode") or "widget"
-        widget_agent_id = payload.get("widget_agent_id")
-        widget_workforce_id = payload.get("widget_workforce_id")
         widget_key = payload.get("widget_key")
         if expected_auth_mode and auth_mode != expected_auth_mode:
             raise HTTPException(status_code=403, detail="Access denied")
@@ -437,14 +455,9 @@ def get_public_chat_user(
         if channel_id is not None and not _is_strict_int(channel_id):
             raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_CLAIMS)
 
-        if _is_strict_int(widget_workforce_id):
-            selected_agent_id = None
-            selected_workforce_id = widget_workforce_id
-        elif _is_strict_int(widget_agent_id):
-            selected_agent_id = widget_agent_id
-            selected_workforce_id = None
-        else:
-            raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_ENTITY)
+        selected_agent_id, selected_workforce_id = _select_public_entity(
+            payload, "widget"
+        )
 
         dialect_name = str(db.get_bind().dialect.name)
         user_id = _require_bindable_public_id(user_id, dialect_name)
@@ -524,7 +537,8 @@ def get_share_chat_user(
     """Get share chat access context from a share token.
 
     ``verified_claims`` replaces decoding ``token`` when the caller already
-    verified the guest claims itself (a redeemed public file ticket).
+    verified the guest claims itself (a decoded guest token or a redeemed
+    public file ticket, see :func:`resolve_public_file_guest`).
     """
     try:
         payload = (
@@ -537,8 +551,6 @@ def get_share_chat_user(
 
         user_id = payload.get("user_id")
         auth_mode = payload.get("auth_mode")
-        share_agent_id = payload.get("share_agent_id")
-        share_workforce_id = payload.get("share_workforce_id")
         share_token = payload.get("share_token")
         guest_id = payload.get("guest_id")
 
@@ -556,14 +568,9 @@ def get_share_chat_user(
         if not isinstance(guest_id, str) or not guest_id.strip():
             raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_CLAIMS)
 
-        if _is_strict_int(share_workforce_id):
-            selected_agent_id = None
-            selected_workforce_id = share_workforce_id
-        elif _is_strict_int(share_agent_id):
-            selected_agent_id = share_agent_id
-            selected_workforce_id = None
-        else:
-            raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_ENTITY)
+        selected_agent_id, selected_workforce_id = _select_public_entity(
+            payload, "share"
+        )
 
         dialect_name = str(db.get_bind().dialect.name)
         user_id = _require_bindable_public_id(user_id, dialect_name)
@@ -636,16 +643,13 @@ def _guest_secret_claim(guest: dict[str, Any]) -> str:
     return "share_token" if guest.get("auth_mode") == "share" else "widget_key"
 
 
-def create_public_file_ticket(
-    token: str, db: Session, *, file_id: str, ttl_seconds: int
-) -> str:
-    """Exchange a live guest token for a ticket bound to ``file_id``.
-
-    The caller checks the guest may read that file; this re-derives the guest's
-    access from the token so no ticket is minted for a revoked guest.
-    """
+def decode_public_guest_token(token: str) -> dict[str, Any]:
+    """Verify a guest token's signature and expiry only (no deployment checks)."""
     try:
         payload = _decode_public_token(token)
+        if payload.get("type") != "widget":
+            raise _PublicTokenRejected(_PublicTokenRejectionReason.INVALID_TOKEN)
+        return payload
     except Exception as exc:
         projected = _project_public_token_failure(
             exc, invalid_detail="Invalid guest token"
@@ -653,16 +657,22 @@ def create_public_file_ticket(
         if projected is not None:
             raise projected from None
         raise
-    if payload.get("auth_mode") == "share":
-        get_share_chat_user(token, db)
-    else:
-        get_public_chat_user(token, db)
+
+
+def create_public_file_ticket(
+    guest_claims: dict[str, Any], *, file_id: str, ttl_seconds: int
+) -> str:
+    """Sign a ticket bound to ``file_id`` for already-validated guest claims.
+
+    The caller has already authorized the guest for that file (and so resolved
+    the claims against the live deployment); this only re-packages them.
+    """
     guest = {
         key: value
-        for key, value in payload.items()
+        for key, value in guest_claims.items()
         if key not in _GUEST_SECRET_CLAIMS and key not in _GUEST_TIME_CLAIMS
     }
-    secret = payload.get(_guest_secret_claim(payload))
+    secret = guest_claims.get(_guest_secret_claim(guest_claims))
     if isinstance(secret, str) and secret:
         guest[_DEPLOYMENT_SECRET_DIGEST_CLAIM] = _deployment_secret_digest(secret)
     claims = {
@@ -693,20 +703,17 @@ def verify_public_file_ticket(ticket: str, file_id: str) -> dict[str, Any]:
 
 def _current_deployment_secret(db: Session, guest: dict[str, Any]) -> str | None:
     """The live share token / widget key for the guest's deployment."""
-    prefix = "share" if guest.get("auth_mode") == "share" else "widget"
-    workforce_id = guest.get(f"{prefix}_workforce_id")
-    agent_id = guest.get(f"{prefix}_agent_id")
+    agent_id, workforce_id = _select_public_entity(
+        guest, "share" if guest.get("auth_mode") == "share" else "widget"
+    )
     dialect_name = str(db.get_bind().dialect.name)
     row: object | None
-    # Same precedence as the claim validators: a workforce id wins.
-    if _is_strict_int(workforce_id):
+    if workforce_id is not None:
         workforce_id = _require_bindable_public_id(workforce_id, dialect_name)
         row = get_deployment(db, DeploymentOwnerType.WORKFORCE, workforce_id)
-    elif _is_strict_int(agent_id):
+    else:
         agent_id = _require_bindable_public_id(agent_id, dialect_name)
         row = db.query(Agent).filter(Agent.id == agent_id).first()
-    else:
-        return None
     value = getattr(row, _guest_secret_claim(guest), None) if row else None
     return value if isinstance(value, str) and value else None
 
@@ -744,32 +751,25 @@ def _guest_claims_from_ticket(
     return guest
 
 
-def get_share_context_for_public_file(
-    credential: PublicFileCredential, db: Session
-) -> ShareChatAccessContext:
-    """Resolve share-guest access for a public file request."""
-    if credential.ticket_claims is None:
-        if not credential.token:
-            raise HTTPException(
-                status_code=403, detail="Public file access token required"
-            )
-        return get_share_chat_user(credential.token, db)
-    guest = _guest_claims_from_ticket(credential.ticket_claims, db)
-    return get_share_chat_user("", db, verified_claims=guest)
+def resolve_public_file_guest(
+    credential: PublicFileCredential,
+    db: Session,
+    resolver: Callable[..., _ChatAccessContextT],
+) -> tuple[_ChatAccessContextT, dict[str, Any]]:
+    """Resolve a public file request's guest through ``resolver``.
 
-
-def get_widget_context_for_public_file(
-    credential: PublicFileCredential, db: Session
-) -> PublicChatAccessContext:
-    """Resolve widget-guest access for a public file request."""
-    if credential.ticket_claims is None:
-        if not credential.token:
-            raise HTTPException(
-                status_code=403, detail="Public file access token required"
-            )
-        return get_public_chat_user(credential.token, db)
-    guest = _guest_claims_from_ticket(credential.ticket_claims, db)
-    return get_public_chat_user("", db, verified_claims=guest)
+    ``resolver`` is :func:`get_share_chat_user` or :func:`get_public_chat_user`,
+    chosen by the caller from the file's task. Returns the access context and
+    the guest claims it validated, so a ticket can be minted from exactly the
+    claims that were checked (no second decode or dispatch).
+    """
+    if credential.ticket_claims is not None:
+        claims = _guest_claims_from_ticket(credential.ticket_claims, db)
+    elif credential.token:
+        claims = decode_public_guest_token(credential.token)
+    else:
+        raise HTTPException(status_code=403, detail="Public file access token required")
+    return resolver("", db, verified_claims=claims), claims
 
 
 security = HTTPBearer()
