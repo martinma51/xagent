@@ -611,6 +611,10 @@ OPAQUE_IDS = [
     "back\\slash",
     "a/b",
     MEMORY_ID_1.upper(),
+    # A prefix ID and the same ID with a trailing newline must stay distinct.
+    "note",
+    "note\n",
+    "note\r\n",
 ]
 # Values that used to rewrite the LanceDB predicate when interpolated raw.
 HOSTILE_IDS = [

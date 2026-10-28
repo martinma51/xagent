@@ -37,10 +37,12 @@ class _MemoryIdConverter(starlette_url.Convertor[str]):  # codespell:ignore
 
     Unlike Starlette's ``path`` converter it never matches an empty remainder,
     so ``/api/memory/`` still falls through to the collection routes instead of
-    answering 405 from a by-ID route.
+    answering 405 from a by-ID route. The pattern is DOTALL: Starlette compiles
+    route regexes without it and ``$`` can match before a terminal newline, so a
+    plain ``.+`` would route ``note\n`` to ``note``.
     """
 
-    regex = ".+"
+    regex = r"(?s:.+)"
 
     def convert(self, value: str) -> str:
         return value
