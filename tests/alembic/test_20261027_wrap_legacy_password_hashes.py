@@ -22,7 +22,7 @@ MIGRATION_PATH = (
     / "src/xagent/migrations/versions/20261027_wrap_legacy_password_hashes.py"
 )
 REVISION = "20261027_wrap_legacy_password_hashes"
-DOWN_REVISION = "20261027_task_dispatch_priority"
+DOWN_REVISION = "20261027_employment_hero_leave"
 
 LEGACY_PASSWORD = "legacy-password"
 UPPERCASE_PASSWORD = "uppercase-legacy-password"
