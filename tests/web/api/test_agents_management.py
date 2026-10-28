@@ -3355,9 +3355,7 @@ def test_widget_file_ticket_reveals_no_guest_identity_for_widget_auth() -> None:
             return False
         assert auth.status_code == 200, auth.text
         token = auth.json()["access_token"]
-        response = client.get(
-            preview_url, headers={"Authorization": f"Bearer {token}"}
-        )
+        response = client.get(preview_url, headers={"Authorization": f"Bearer {token}"})
         return response.status_code == 200
 
     # Control: the attack works if the real guest id is known.

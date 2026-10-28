@@ -157,9 +157,9 @@ class RequestTargetRedactionFilter(logging.Filter):
             record.msg in _HEADER_LOG_FORMATS
             and isinstance(args, tuple)
             and len(args) == 2
-            and isinstance(args[0], str)
         ):
             name, value = args
+            name = str(name)
             text = value if isinstance(value, str) else str(value)
             safe = redact_header_value(name, text)
             if safe != text:

@@ -665,9 +665,7 @@ def _guest_binding(guest_id: str) -> str:
     Keyed with the server's JWT secret (domain-separated), so a self-chosen,
     low-entropy widget guest id cannot be recovered by guessing offline.
     """
-    key = hmac.digest(
-        JWT_SECRET_KEY.encode("utf-8"), _GUEST_BINDING_DOMAIN, "sha256"
-    )
+    key = hmac.digest(JWT_SECRET_KEY.encode("utf-8"), _GUEST_BINDING_DOMAIN, "sha256")
     return hmac.new(key, guest_id.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
@@ -816,9 +814,7 @@ def resolve_public_file_guest(
     claims that were checked (no second decode or dispatch).
     """
     if credential.ticket_claims is not None:
-        claims = _guest_claims_from_ticket(
-            credential.ticket_claims, db, task_guest_id
-        )
+        claims = _guest_claims_from_ticket(credential.ticket_claims, db, task_guest_id)
     elif credential.token:
         claims = decode_public_guest_token(credential.token)
     else:
