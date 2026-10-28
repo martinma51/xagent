@@ -38,6 +38,10 @@ MALICIOUS_IDS = [
     "\\",
     "\\' OR 1=1 --",
     "x'; DELETE FROM test_memories; --",
+    # LIKE wildcards are ordinary characters in an equality literal.
+    "%",
+    "_",
+    "%' OR id LIKE '%",
 ]
 
 
@@ -135,7 +139,10 @@ def test_crafted_id_cannot_reach_another_users_note(base_store, two_users, craft
     assert victim.success and victim.content.content == "user two note"
 
 
-@pytest.mark.parametrize("odd_id", ["it's", "a\\b", "'; --", "q''q"])
+@pytest.mark.parametrize(
+    "odd_id",
+    ["it's", "a\\b", "'; --", "q''q", "50%_off", "id with spaces", "a/b", "%", "_"],
+)
 def test_ids_with_quotes_and_backslashes_round_trip_exactly(base_store, odd_id):
     other = base_store.add(MemoryNote(content="bystander")).memory_id
     assert base_store.add(MemoryNote(id=odd_id, content="odd")).memory_id == odd_id

@@ -112,8 +112,8 @@ def _unavailable(state: MemoryLifecycleState):
     return provider, status
 
 
-# A well-formed (UUID4) memory ID, so the request reaches the lifecycle check.
-_NOTE_PATH = "/api/memory/0b7a6a52-3f1e-4c3a-9d55-1f0c8e2a7b11"
+# Memory IDs are opaque; a non-UUID ID still reaches the lifecycle check.
+_NOTE_PATH = "/api/memory/some-id"
 
 
 @pytest.mark.parametrize("state", UNAVAILABLE_STATES)

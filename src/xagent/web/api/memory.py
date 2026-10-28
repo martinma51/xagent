@@ -7,6 +7,7 @@ from typing import Annotated, Any, Callable, Iterator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
+from starlette import convertors as starlette_url  # codespell:ignore
 
 from xagent.core.memory.base import MemoryStore
 from xagent.core.memory.core import MemoryNote
@@ -22,22 +23,41 @@ from ..user_isolated_memory import UserContext
 logger = logging.getLogger(__name__)
 MEMORY_READ_UNAVAILABLE_DETAIL = "Memory storage is temporarily unavailable."
 
-# Every memory ID is minted as ``str(uuid.uuid4())`` (``MemoryNote.id``'s
-# default and the LanceDB store's fallback for an empty ID), so the routes
-# accept exactly that canonical lowercase UUID4 form and reject anything else
-# with a 422 before the value reaches a store or a backend filter expression.
-MEMORY_ID_PATTERN = (
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+
+# Memory IDs are opaque strings. New notes get ``str(uuid.uuid4())``, but the
+# store keeps any non-empty ID it is given and legacy admission preserves
+# existing unique non-empty IDs, so the by-ID routes must accept exactly what
+# ``/list`` returned -- quotes, spaces, ``%``/``_`` and an encoded ``/``
+# included. The value is only ever compared as an exact literal: every LanceDB
+# predicate built from it goes through ``xagent.core.utils.lancedb_sql``. Only
+# the empty string is refused, because no store can hold it (an empty ID is
+# replaced on add and rejected by legacy admission).
+class _MemoryIdConverter(starlette_url.Convertor[str]):  # codespell:ignore
+    """One non-empty path remainder, ``/`` included.
+
+    Unlike Starlette's ``path`` converter it never matches an empty remainder,
+    so ``/api/memory/`` still falls through to the collection routes instead of
+    answering 405 from a by-ID route.
+    """
+
+    regex = ".+"
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+
+starlette_url.register_url_convertor(  # codespell:ignore
+    "memory_id", _MemoryIdConverter()
 )
+
 MemoryIdPath = Annotated[
     str,
-    Path(
-        pattern=MEMORY_ID_PATTERN,
-        min_length=36,
-        max_length=36,
-        description="Memory ID (canonical lowercase UUID4)",
-    ),
+    Path(min_length=1, description="Memory ID, exactly as listed"),
 ]
+MEMORY_ID_ROUTE = "/{memory_id:memory_id}"
 
 
 @contextmanager
@@ -247,7 +267,7 @@ class MemoryManagementRouter:
                     status_code=500, detail="Failed to list memories."
                 ) from None
 
-        @self.router.delete("/{memory_id}")
+        @self.router.delete(MEMORY_ID_ROUTE)
         async def delete_memory(
             memory_id: MemoryIdPath, user: User = Depends(get_current_user)
         ) -> dict[str, Any]:
@@ -271,7 +291,7 @@ class MemoryManagementRouter:
                     status_code=500, detail=f"Failed to delete memory: {str(e)}"
                 )
 
-        @self.router.put("/{memory_id}")
+        @self.router.put(MEMORY_ID_ROUTE)
         async def update_memory(
             memory_id: MemoryIdPath,
             update_request: MemoryUpdateRequest,
@@ -429,7 +449,7 @@ class MemoryManagementRouter:
                     status_code=500, detail="Failed to get store info."
                 ) from None
 
-        @self.router.get("/{memory_id}")
+        @self.router.get(MEMORY_ID_ROUTE)
         async def get_memory(
             memory_id: MemoryIdPath, user: User = Depends(get_current_user)
         ) -> dict[str, Any]:
