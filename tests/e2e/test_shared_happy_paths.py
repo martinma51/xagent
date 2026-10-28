@@ -112,7 +112,10 @@ def test_agent_chat_reply_and_followup(shared_app, interface):
         "Continue the conversation" in json.dumps(call["messages"]) for call in calls
     )
     with connect(
-        url, additional_headers=app.headers if interface == "owner" else None
+        url,
+        additional_headers=app.headers
+        if interface == "owner"
+        else {"Authorization": f"Bearer {token}"},
     ) as ws:
         _, history = receive_event(ws, "historical_data_complete")
         assert "Continue the conversation" in json.dumps(history)
