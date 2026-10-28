@@ -416,6 +416,43 @@ describe("FileAccessProvider", () => {
     }
   })
 
+  it("prunes stale settled tickets for other files but keeps pending mints", async () => {
+    vi.useFakeTimers()
+    const mapDelete = vi.spyOn(Map.prototype, "delete")
+    try {
+      let releasePending: ((response: Response) => void) | undefined
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+        if (url.endsWith("/tickets/file-a")) return ticketResponse("ta", 10)
+        if (url.endsWith("/tickets/file-b")) return ticketResponse("tb", 600)
+        return new Promise<Response>((resolve) => { releasePending = resolve })
+      })
+      vi.stubGlobal("fetch", fetchMock)
+      const policy = createPublicFileAccessPolicy("guest-token")
+
+      await expect(policy.getStreamingUrl?.("file-a")).resolves.toContain("ticket=ta")
+      const pending = policy.getStreamingUrl?.("file-pending")
+      // Past file-a's reuse window (half its 10s lifetime), inside the mint timeout.
+      vi.advanceTimersByTime(6_000)
+
+      await expect(policy.getStreamingUrl?.("file-b")).resolves.toContain("ticket=tb")
+      const deleted = mapDelete.mock.calls.map(([key]) => key)
+      expect(deleted).toContain("file-a")
+      expect(deleted).not.toContain("file-pending")
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/tickets/file-b")))
+        .toHaveLength(1)
+
+      // The in-flight mint is still shared rather than restarted.
+      const joined = policy.getStreamingUrl?.("file-pending")
+      releasePending?.(ticketResponse("tp", 600))
+      await expect(pending).resolves.toContain("ticket=tp")
+      await expect(joined).resolves.toContain("ticket=tp")
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    } finally {
+      mapDelete.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it("evicts a failed ticket mint so the next load retries", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("nope", { status: 503 }))

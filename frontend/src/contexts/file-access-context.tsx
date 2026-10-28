@@ -234,6 +234,20 @@ export function createPublicFileAccessPolicy(accessToken: string): FileAccessPol
   // mints by fileId. A failed or timed-out mint is evicted, so the next load
   // retries instead of re-throwing a cached rejection.
   const tickets = new Map<string, Promise<TicketEntry>>()
+  // When each settled mint stops being reused, keyed by its cache promise.
+  // Pending mints have no entry, so pruning never drops a per-file
+  // single-flight promise.
+  const settledRefreshAt = new WeakMap<Promise<TicketEntry>, number>()
+  // Without this, a file that is never requested again would keep its stale
+  // entry for the life of the policy, so the cache would grow with every
+  // file visited.
+  const pruneStaleTickets = () => {
+    const now = Date.now()
+    for (const [fileId, cached] of tickets) {
+      const refreshAt = settledRefreshAt.get(cached)
+      if (refreshAt !== undefined && refreshAt <= now) tickets.delete(fileId)
+    }
+  }
 
   const readTicket = async (fileId: string, signal: AbortSignal): Promise<TicketEntry> => {
     const response = await request(
@@ -278,6 +292,7 @@ export function createPublicFileAccessPolicy(accessToken: string): FileAccessPol
   }
 
   const mintTicket = async (fileId: string): Promise<string> => {
+    pruneStaleTickets()
     const cached = tickets.get(fileId)
     if (cached) {
       const entry = await cached.catch(() => null)
@@ -297,7 +312,9 @@ export function createPublicFileAccessPolicy(accessToken: string): FileAccessPol
     try {
       // A just-minted ticket is returned as is, never re-checked against
       // refreshAt: that check is only for reuse, so no TTL can make this loop.
-      return (await pending).ticket
+      const entry = await pending
+      settledRefreshAt.set(pending, entry.refreshAt)
+      return entry.ticket
     } catch (error) {
       if (tickets.get(fileId) === pending) tickets.delete(fileId)
       throw error

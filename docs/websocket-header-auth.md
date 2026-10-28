@@ -60,7 +60,11 @@ carries no reusable identity: only a digest of the share token / widget key
 and a keyed, non-reversible binding of the guest id (never the id itself,
 which `/api/widget/auth` would re-sign into a fresh guest token). Redemption
 restores the guest from the file's own task and revalidates against the live
-deployment on every use, so disabling or rotating the link revokes it. A ticket is not accepted as
+deployment on every use, so disabling or rotating the link revokes it. One
+exception: a ticket minted from a legacy widget token that carries no
+`widget_key` has no key digest to compare, so rotating the widget key does not
+revoke it before it expires; disabling or unpublishing the widget still does,
+as does key rotation for share-link and keyed widget tickets. A ticket is not accepted as
 a Bearer guest token, and a guest token or private stream ticket is not
 accepted as `?ticket=`. Server access and handshake logs redact credential-like
 query values (`token`, `ticket`, `*_key`, ...), and the per-header lines the
