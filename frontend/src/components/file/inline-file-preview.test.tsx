@@ -160,6 +160,70 @@ describe('InlineFilePreview', () => {
     expect(apiRequestMock).not.toHaveBeenCalled()
   })
 
+  it('opens a public file link with a file ticket added at click time', async () => {
+    // Guest-bound share/widget files 403 a plain navigation (the browser
+    // can't send the guest header), so with no in-app dialog the link opens
+    // a new tab on a ticketed URL; the static href never carries one.
+    const fetchMock = publicFileFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    const fakeTab = { opener: {} as unknown, closed: false, location: { href: '' } }
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(fakeTab as unknown as Window)
+
+    render(
+      <FileAccessProvider policy={createPublicFileAccessPolicy('guest-a')}>
+        <InlineFilePreview source={{ type: 'file', fileId: 'doc-id', filename: 'notes.zip' }} />
+      </FileAccessProvider>,
+    )
+
+    const link = screen.getByRole('link', { name: 'notes.zip' })
+    expect(link.getAttribute('href')).toBe('http://api.local/api/files/public/download/doc-id')
+    const middleClick = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 })
+    fireEvent(link, middleClick)
+    expect(middleClick.defaultPrevented).toBe(true)
+    expect(openSpy).toHaveBeenCalledWith('about:blank', '_blank')
+    expect(fakeTab.opener).toBeNull()
+    await waitFor(() => expect(fakeTab.location.href).toBe(
+      'http://api.local/api/files/public/download/doc-id?ticket=file-ticket-doc-id',
+    ))
+    expect(link.getAttribute('href')).not.toContain('ticket=')
+
+    // A right-click keeps the browser's own context menu.
+    const rightClick = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 })
+    fireEvent(link, rightClick)
+    expect(rightClick.defaultPrevented).toBe(false)
+    expect(openSpy).toHaveBeenCalledTimes(1)
+    openSpy.mockRestore()
+  })
+
+  it('leaves in-app file links to the browser when the policy needs no ticket', () => {
+    const openSpy = vi.spyOn(window, 'open')
+    render(<InlineFilePreview source={{ type: 'file', fileId: 'doc-id', filename: 'notes.zip' }} />)
+
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })
+    fireEvent(screen.getByRole('link', { name: 'notes.zip' }), click)
+    expect(click.defaultPrevented).toBe(false)
+    expect(openSpy).not.toHaveBeenCalled()
+    openSpy.mockRestore()
+  })
+
+  it('never serves one policy\'s streaming URL to another policy', async () => {
+    const policyFor = (guest: string) => ({
+      ...defaultFileAccessPolicy,
+      getStreamingUrl: vi.fn(async (fileId: string) => `https://example.test/${guest}/${fileId}`),
+    })
+    const guestA = policyFor('guest-a')
+    const guestB = policyFor('guest-b')
+
+    await expect(__mintStreamingUrlForTests(guestA, 'same-file'))
+      .resolves.toBe('https://example.test/guest-a/same-file')
+    await expect(__mintStreamingUrlForTests(guestB, 'same-file'))
+      .resolves.toBe('https://example.test/guest-b/same-file')
+    await expect(__mintStreamingUrlForTests(guestA, 'same-file'))
+      .resolves.toBe('https://example.test/guest-a/same-file')
+    expect(guestA.getStreamingUrl).toHaveBeenCalledTimes(1)
+    expect(guestB.getStreamingUrl).toHaveBeenCalledTimes(1)
+  })
+
   it('extracts uuid from file paths that include a filename suffix', async () => {
     apiRequestMock.mockResolvedValue({
       ok: true,

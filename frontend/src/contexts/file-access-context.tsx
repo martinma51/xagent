@@ -182,6 +182,9 @@ const PUBLIC_FILE_ROUTE = new RegExp(`^${FILES_API_PREFIX}/public/(?:preview|dow
 const TICKET_SHAPE = /^[A-Za-z0-9._~-]{1,8192}$/
 // Re-mint this long before the server-side expiry so a URL handed to the
 // browser does not expire while its first request is still in flight.
+// Clamped to half the ticket's lifetime (see mintTicket), so a deployment
+// with a short XAGENT_FILE_STREAM_TICKET_TTL_SECONDS still caches a ticket
+// for a while instead of treating every fresh one as already stale.
 const TICKET_REFRESH_MARGIN_MS = 30_000
 
 const resolveAgainstPage = (url: string): URL =>
@@ -208,11 +211,10 @@ const isPublicFileRoute = (url: string): boolean => {
  * token itself never appears in a URL.
  */
 export function createPublicFileAccessPolicy(accessToken: string): FileAccessPolicy {
-  const publicUrl = (path: string) => buildUrl(path)
   const inlinePreviewUrl = (fileId: string) =>
-    publicUrl(`${FILES_API_PREFIX}/public/preview/${encodeFileId(fileId)}`)
+    buildUrl(`${FILES_API_PREFIX}/public/preview/${encodeFileId(fileId)}`)
   const inlineDownloadUrl = (fileId: string) =>
-    publicUrl(`${FILES_API_PREFIX}/public/download/${encodeFileId(fileId)}`)
+    buildUrl(`${FILES_API_PREFIX}/public/download/${encodeFileId(fileId)}`)
 
   const request: FileAccessRequest = (url, options = {}) => {
     const headers = new Headers(options.headers)
@@ -227,39 +229,67 @@ export function createPublicFileAccessPolicy(accessToken: string): FileAccessPol
     return fetch(url, { ...options, headers, credentials: "same-origin" })
   }
 
-  const tickets = new Map<string, Promise<{ ticket: string; expiresAt: number }>>()
-  const mintTicket = (fileId: string): Promise<string> => {
-    const cached = tickets.get(fileId)
-    const pending = cached ?? (async () => {
-      const response = await request(
-        publicUrl(`${FILES_API_PREFIX}/public/tickets/${encodeFileId(fileId)}`),
-        { method: "POST" },
+  type TicketEntry = { ticket: string; refreshAt: number }
+  // One cache per policy instance (so per guest token): pending and settled
+  // mints by fileId. A failed or timed-out mint is evicted, so the next load
+  // retries instead of re-throwing a cached rejection.
+  const tickets = new Map<string, Promise<TicketEntry>>()
+
+  const fetchTicket = async (fileId: string): Promise<TicketEntry> => {
+    // A hung mint would otherwise stall every media/HTML-preview load for
+    // this file behind the cached pending promise.
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), STREAM_TICKET_MINT_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await request(
+        buildUrl(`${FILES_API_PREFIX}/public/tickets/${encodeFileId(fileId)}`),
+        { method: "POST", signal: controller.signal },
       )
-      if (!response.ok) {
-        throw new Error(`Failed to mint file ticket: ${response.status}`)
+    } finally {
+      clearTimeout(timeout)
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to mint file ticket: ${response.status}`)
+    }
+    const data: unknown = await response.json()
+    const record = data && typeof data === "object" ? data as Record<string, unknown> : {}
+    const ticket = record.ticket
+    const expiresIn = record.expires_in
+    if (typeof ticket !== "string" || !TICKET_SHAPE.test(ticket)
+      || typeof expiresIn !== "number" || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+      throw new Error("File ticket response has an unexpected shape")
+    }
+    const lifetimeMs = expiresIn * 1000
+    const marginMs = Math.min(TICKET_REFRESH_MARGIN_MS, lifetimeMs / 2)
+    return { ticket, refreshAt: Date.now() + lifetimeMs - marginMs }
+  }
+
+  const mintTicket = async (fileId: string): Promise<string> => {
+    const cached = tickets.get(fileId)
+    if (cached) {
+      const entry = await cached.catch(() => null)
+      if (entry && entry.refreshAt > Date.now()) return entry.ticket
+      const current = tickets.get(fileId)
+      if (current === cached) {
+        tickets.delete(fileId)
+      } else if (current) {
+        // A concurrent caller already replaced this stale entry with its own
+        // mint: share that one (without re-checking it) instead of minting
+        // a second ticket.
+        return (await current).ticket
       }
-      const data: unknown = await response.json()
-      const record = data && typeof data === "object" ? data as Record<string, unknown> : {}
-      const ticket = record.ticket
-      const expiresIn = record.expires_in
-      if (typeof ticket !== "string" || !TICKET_SHAPE.test(ticket)
-        || typeof expiresIn !== "number" || !Number.isFinite(expiresIn) || expiresIn <= 0) {
-        throw new Error("File ticket response has an unexpected shape")
-      }
-      return { ticket, expiresAt: Date.now() + expiresIn * 1000 - TICKET_REFRESH_MARGIN_MS }
-    })()
-    if (!cached) tickets.set(fileId, pending)
-    return pending.then(
-      (entry) => {
-        if (entry.expiresAt > Date.now()) return entry.ticket
-        if (tickets.get(fileId) === pending) tickets.delete(fileId)
-        return mintTicket(fileId)
-      },
-      (error: unknown) => {
-        if (tickets.get(fileId) === pending) tickets.delete(fileId)
-        throw error
-      },
-    )
+    }
+    const pending = fetchTicket(fileId)
+    tickets.set(fileId, pending)
+    try {
+      // A just-minted ticket is returned as is, never re-checked against
+      // refreshAt: that check is only for reuse, so no TTL can make this loop.
+      return (await pending).ticket
+    } catch (error) {
+      if (tickets.get(fileId) === pending) tickets.delete(fileId)
+      throw error
+    }
   }
 
   const authorizeBrowserUrl = async (url: string): Promise<string> => {

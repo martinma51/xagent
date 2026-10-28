@@ -268,6 +268,17 @@ export function FileViewer({
     // Subresources load without headers, so a policy that needs one signs
     // each distinct asset URL with a short-lived file ticket first. An asset
     // that cannot be signed keeps its plain URL and simply fails to load.
+    //
+    // Signed once per preparation, deliberately not refreshed: tickets live
+    // XAGENT_FILE_STREAM_TICKET_TTL_SECONDS (default 10 min), so assets the
+    // document requests only after that -- lazy-loaded images, in-document
+    // media range requests, in-preview navigations -- fail until the preview
+    // is reopened (which re-signs). Re-signing on a timer would mean
+    // re-delivering srcDoc, which reloads the sandboxed cross-origin document
+    // and loses its scroll, form and playback state every TTL period; the
+    // parent also cannot see subresource failures inside that sandbox to
+    // refresh only when needed. Eager assets, the common case, load at first
+    // render. See docs/html-preview-security.md.
     let active = true
     const assetUrls = new Set<string>()
     processHtmlContent(content, fileId, (url) => {

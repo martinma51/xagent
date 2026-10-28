@@ -362,4 +362,92 @@ describe("FileAccessProvider", () => {
     await expect(policy.getStreamingUrl?.("file-id"))
       .rejects.toThrow("File ticket response has an unexpected shape")
   })
+  const ticketResponse = (ticket: string, expiresIn: number) => new Response(
+    JSON.stringify({ ticket, expires_in: expiresIn }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  )
+
+  it("mints once for a short server TTL instead of looping on a fresh ticket", async () => {
+    vi.useFakeTimers()
+    try {
+      let minted = 0
+      const fetchMock = vi.fn().mockImplementation(async () => ticketResponse(`t${++minted}`, 10))
+      vi.stubGlobal("fetch", fetchMock)
+      const policy = createPublicFileAccessPolicy("guest-token")
+
+      // TTL (10s) is below the 30s refresh margin: the fresh ticket is used.
+      await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=t1")
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      // Still reused within the clamped margin (half the lifetime).
+      vi.advanceTimersByTime(4_000)
+      await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=t1")
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      // Refreshed once past it -- exactly one more mint.
+      vi.advanceTimersByTime(2_000)
+      await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=t2")
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("refreshes a ticket 30s before a normal expiry and shares concurrent mints", async () => {
+    vi.useFakeTimers()
+    try {
+      let minted = 0
+      const fetchMock = vi.fn().mockImplementation(async () => ticketResponse(`t${++minted}`, 600))
+      vi.stubGlobal("fetch", fetchMock)
+      const policy = createPublicFileAccessPolicy("guest-token")
+
+      const burst = await Promise.all([
+        policy.getStreamingUrl?.("file-id"),
+        policy.getStreamingUrl?.("file-id"),
+      ])
+      expect(burst.every((url) => url?.includes("ticket=t1"))).toBe(true)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+
+      vi.advanceTimersByTime(569_000)
+      await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=t1")
+      vi.advanceTimersByTime(2_000)
+      await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=t2")
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("evicts a failed ticket mint so the next load retries", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("nope", { status: 503 }))
+      .mockResolvedValueOnce(ticketResponse("fresh", 600))
+    vi.stubGlobal("fetch", fetchMock)
+    const policy = createPublicFileAccessPolicy("guest-token")
+
+    await expect(policy.getStreamingUrl?.("file-id"))
+      .rejects.toThrow("Failed to mint file ticket: 503")
+    await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=fresh")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("aborts a hung ticket mint after the timeout and evicts it", async () => {
+    vi.useFakeTimers()
+    try {
+      const fetchMock = vi.fn()
+        .mockImplementationOnce((_url: string, options: RequestInit) => new Promise((_, reject) => {
+          options.signal?.addEventListener("abort", () => reject(new Error("aborted")))
+        }))
+        .mockImplementationOnce(async () => ticketResponse("after-timeout", 600))
+      vi.stubGlobal("fetch", fetchMock)
+      const policy = createPublicFileAccessPolicy("guest-token")
+
+      const hung = policy.getStreamingUrl?.("file-id")
+      const settled = expect(hung).rejects.toThrow("aborted")
+      await vi.advanceTimersByTimeAsync(10_000)
+      await settled
+      await expect(policy.getStreamingUrl?.("file-id")).resolves.toContain("ticket=after-timeout")
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
